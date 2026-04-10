@@ -1,0 +1,189 @@
+[
+  {
+    "id": "1",
+    "name": "04.038",
+    "position": { "x": 15, "y": 35 },
+    "status": "available",
+    "floor": "4",
+    "attributes": ["Monitor"]
+  },
+  {
+    "id": "2",
+    "name": "04.037",
+    "position": { "x": 15, "y": 42 },
+    "status": "available",
+    "floor": "4"
+  },
+  {
+    "id": "3",
+    "name": "04.036",
+    "position": { "x": 15, "y": 49 },
+    "status": "available",
+    "floor": "4",
+    "attributes": ["Standing Desk"]
+  },
+  {
+    "id": "4",
+    "name": "04.035",
+    "position": { "x": 15, "y": 56 },
+    "status": "available",
+    "floor": "4"
+  },
+  {
+    "id": "5",
+    "name": "04.048",
+    "position": { "x": 22, "y": 35 },
+    "status": "available",
+    "floor": "4"
+  },
+  {
+    "id": "6",
+    "name": "04.047",
+    "position": { "x": 22, "y": 42 },
+    "status": "available",
+    "floor": "4",
+    "attributes": ["Monitor", "Near Window"]
+  },
+  {
+    "id": "7",
+    "name": "04.046",
+    "position": { "x": 22, "y": 49 },
+    "status": "available",
+    "floor": "4"
+  },
+  {
+    "id": "8",
+    "name": "04.045",
+    "position": { "x": 22, "y": 56 },
+    "status": "available",
+    "floor": "4"
+  },
+  {
+    "id": "9",
+    "name": "04.058",
+    "position": { "x": 35, "y": 35 },
+    "status": "colleague",
+    "floor": "4",
+    "bookedBy": "John Doe"
+  },
+  {
+    "id": "10",
+    "name": "04.057",
+    "position": { "x": 35, "y": 42 },
+    "status": "team-member",
+    "floor": "4",
+    "bookedBy": "Jane Smith"
+  },
+  {
+    "id": "11",
+    "name": "04.056",
+    "position": { "x": 35, "y": 49 },
+    "status": "available",
+    "floor": "4",
+    "attributes": ["Standing Desk", "Monitor"]
+  },
+  {
+    "id": "12",
+    "name": "04.055",
+    "position": { "x": 35, "y": 56 },
+    "status": "available",
+    "floor": "4"
+  },
+  {
+    "id": "13",
+    "name": "04.069",
+    "position": { "x": 47, "y": 28 },
+    "status": "available",
+    "floor": "4",
+    "attributes": ["Monitor", "Standing Desk"]
+  },
+  {
+    "id": "14",
+    "name": "04.068",
+    "position": { "x": 47, "y": 35 },
+    "status": "available",
+    "floor": "4"
+  },
+  {
+    "id": "15",
+    "name": "04.067",
+    "position": { "x": 47, "y": 42 },
+    "status": "available",
+    "floor": "4",
+    "attributes": ["Monitor"]
+  },
+  {
+    "id": "16",
+    "name": "04.066",
+    "position": { "x": 47, "y": 49 },
+    "status": "available",
+    "floor": "4"
+  },
+  {
+    "id": "17",
+    "name": "04.065",
+    "position": { "x": 47, "y": 56 },
+    "status": "available",
+    "floor": "4"
+  },
+  {
+    "id": "18",
+    "name": "04.078",
+    "position": { "x": 60, "y": 35 },
+    "status": "available",
+    "floor": "4",
+    "attributes": ["Near Window"]
+  },
+  {
+    "id": "19",
+    "name": "04.077",
+    "position": { "x": 60, "y": 42 },
+    "status": "available",
+    "floor": "4"
+  },
+  {
+    "id": "20",
+    "name": "04.076",
+    "position": { "x": 60, "y": 49 },
+    "status": "available",
+    "floor": "4",
+    "attributes": ["Standing Desk"]
+  },
+  {
+    "id": "21",
+    "name": "04.075",
+    "position": { "x": 60, "y": 56 },
+    "status": "available",
+    "floor": "4"
+  },
+  {
+    "id": "22",
+    "name": "04.088",
+    "position": { "x": 72, "y": 35 },
+    "status": "available",
+    "floor": "4"
+  },
+  {
+    "id": "23",
+    "name": "04.087",
+    "position": { "x": 72, "y": 42 },
+    "status": "available",
+    "floor": "4"
+  },
+  {
+    "id": "24",
+    "name": "04.086",
+    "position": { "x": 72, "y": 49 },
+    "status": "available",
+    "floor": "4",
+    "attributes": ["Monitor", "Near Window"]
+  },
+  {
+    "id": "25",
+    "name": "04.085",
+    "position": { "x": 72, "y": 56 },
+    "status": "available",
+    "floor": "4"
+  }
+]
+
