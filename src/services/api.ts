@@ -1,48 +1,113 @@
-/**
- * API Service - Real Backend Integration
- * 
- * Backend Models (Prisma):
- * - Room: { id: number, data: string }
- * - Booking: { id: number, id_room: number, id_user: number, start: string, end: string }
- * - User: { id: number, name: string, password: string, avatar: string }
- */
+import { Desk } from '@/types/desk';
 
-import { Desk, Booking as FrontendBooking } from '@/types/desk';
-import { generate216Desks } from '@/utils/generateDesks';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+export const AUTH_API_BASE_URL = process.env.NEXT_PUBLIC_AUTH_API_URL || API_BASE_URL;
+export const BOOKING_API_BASE_URL = process.env.NEXT_PUBLIC_BOOKING_API_URL || API_BASE_URL;
+export const API_WS_URL = process.env.NEXT_PUBLIC_WS_URL || API_BASE_URL.replace(/^http/, 'ws');
 
-// API Base URL
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-
-// Mock data types matching backend structure
-interface BackendRoom {
-  id: number;
-  data: string; // JSON string containing desk data
+interface PagedResponse<T> {
+  content: T[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  last: boolean;
 }
 
-interface BackendBooking {
+interface AuthUserView {
+  id: number;
+  username: string;
+  email: string;
+  roles: string[];
+}
+
+interface LoginApiResponse {
+  token: string;
+  tokenType: string;
+  expiresInMs: number;
+  user: AuthUserView;
+}
+
+interface BookingApiModel {
+  id: number;
+  userId: number;
+  roomId: number;
+  roomName: string;
+  teamId: number | null;
+  startsAt: string;
+  endsAt: string;
+  status: string;
+}
+
+interface RoomApiModel {
+  id: number;
+  name: string;
+  capacity: number;
+  roomType: string;
+}
+
+interface DeskApiModel {
+  id: number;
+  code: string;
+  deskType: string;
+  roomId: number;
+}
+
+interface TeamApiModel {
+  id: number;
+  name: string;
+  description: string;
+}
+
+interface TeamMemberApiModel {
+  id: number;
+  userId: number;
+  displayName: string;
+  teamId: number;
+}
+
+interface LegacyRoom {
+  id: number;
+  data: string;
+}
+
+interface LegacyBooking {
   id: number;
   id_room: number;
   id_user: number;
-  date: string; // YYYY-MM-DD format
-  start: string; // HH:MM format (time only)
-  end: string; // HH:MM format (time only)
-  user?: {
-    id: number;
-    name: string;
-    avatar: string;
-    type: string;
-  } | null;
+  date: string;
+  start: string;
+  end: string;
+  status?: string;
+  room_name?: string;
 }
 
-interface BackendUser {
+interface LegacyUser {
   id: number;
   name: string;
-  password: string;
   avatar: string;
   type: string;
+  email?: string;
 }
 
-interface LoginResponse {
+interface TeamWithMembers {
+  id: number;
+  name: string;
+  description?: string;
+  members: Array<{
+    id: number;
+    userId: number;
+    teamId: number;
+    user: {
+      id: number;
+      name: string;
+      avatar: string;
+      type: string;
+    };
+  }>;
+}
+
+type LoginResponse = {
   success: boolean;
   message: string;
   user: {
@@ -51,9 +116,9 @@ interface LoginResponse {
     avatar: string;
     type: string;
   } | null;
-}
+};
 
-interface UpdateAvatarResponse {
+type UpdateAvatarResponse = {
   success: boolean;
   message: string;
   user: {
@@ -62,264 +127,512 @@ interface UpdateAvatarResponse {
     avatar: string;
     type: string;
   } | null;
-}
+};
 
-/**
- * Real API Service - Connects to FastAPI Backend
- */
 class ApiService {
-  private users: BackendUser[] = [];
-  private usersLoaded = false;
+  private usersCache: LegacyUser[] = [];
+  private roomsCache: LegacyRoom[] = [];
 
-  constructor() {
-    // Load users once on initialization
-    this.loadUsers();
+  private getStoredToken(): string | null {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    return localStorage.getItem('authToken');
   }
 
-  /**
-   * Load users from backend
-   */
-  private async loadUsers() {
+  private getStoredUser(): LegacyUser | null {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    const userRaw = localStorage.getItem('user');
+    if (!userRaw) {
+      return null;
+    }
     try {
-      const response = await this.fetchWithErrorHandling<{ message: string; users: BackendUser[] }>(
-        `${API_BASE_URL}/users`
-      );
-      this.users = response.users;
-      this.usersLoaded = true;
-    } catch (error) {
-      console.error('Failed to load users, using fallback:', error);
-      // Fallback users
-      this.users = [
-        { id: 1, name: 'You', password: '', avatar: '', type: 'EMPLOYEE' },
-      ];
-      this.usersLoaded = true;
+      return JSON.parse(userRaw) as LegacyUser;
+    } catch {
+      return null;
     }
   }
 
-  /**
-   * Fetch with error handling
-   */
-  private async fetchWithErrorHandling<T>(url: string, options?: RequestInit): Promise<T> {
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...options?.headers,
-        },
-      });
-
-      if (!response.ok) {
-        // Try to extract error detail from response
-        let errorMessage = `HTTP error! status: ${response.status}`;
-        try {
-          const errorData = await response.json();
-          if (errorData.detail) {
-            errorMessage = errorData.detail;
-          }
-        } catch {
-          // If response is not JSON, use default message
-        }
-        throw new Error(errorMessage);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error(`API Error for ${url}:`, error);
-      throw error;
+  private storeUser(user: LegacyUser): void {
+    if (typeof window === 'undefined') {
+      return;
     }
+    localStorage.setItem('user', JSON.stringify(user));
   }
 
-  /**
-   * Get user ID by name
-   */
-  private async getUserIdByName(name: string): Promise<number> {
-    // Wait for users to be loaded
-    if (!this.usersLoaded) {
-      await this.loadUsers();
-    }
-    
-    const user = this.users.find(u => u.name === name);
-    return user?.id || 1; // Default to user ID 1
+  private withAuthHeaders(headers?: HeadersInit): HeadersInit {
+    const token = this.getStoredToken();
+    return {
+      ...(headers || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
   }
 
-  /**
-   * Format date and time to ISO string
-   */
-  private formatToISO(date: string, time: string): string {
+  private roleToUserType(roles: string[] | undefined): string {
+    if (!roles || roles.length === 0) {
+      return 'EMPLOYEE';
+    }
+    if (roles.includes('ADMIN')) {
+      return 'ADMIN';
+    }
+    if (roles.includes('MANAGER')) {
+      return 'MANAGER';
+    }
+    return 'EMPLOYEE';
+  }
+
+  private toLegacyUser(user: AuthUserView): LegacyUser {
+    return {
+      id: user.id,
+      name: user.username,
+      avatar: '',
+      type: this.roleToUserType(user.roles),
+      email: user.email,
+    };
+  }
+
+  private parseDateTime(iso: string): { date: string; time: string } {
+    const dateObj = new Date(iso);
+    const yyyy = dateObj.getFullYear();
+    const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const dd = String(dateObj.getDate()).padStart(2, '0');
+    const hh = String(dateObj.getHours()).padStart(2, '0');
+    const min = String(dateObj.getMinutes()).padStart(2, '0');
+    return {
+      date: `${yyyy}-${mm}-${dd}`,
+      time: `${hh}:${min}`,
+    };
+  }
+
+  private toIso(date: string, time: string): string {
     return `${date}T${time}:00`;
   }
 
-  /**
-   * Parse ISO string to date and time
-   */
-  private parseISO(isoString: string): { date: string; time: string } {
-    const [date, time] = isoString.split('T');
-    const [hours, minutes] = time.split(':');
-    return { date, time: `${hours}:${minutes}` };
+  private mapRoomType(roomType: string): 'desk' | 'meeting-room' | 'recreational' {
+    const normalized = (roomType || '').toLowerCase();
+    if (normalized.includes('meeting')) {
+      return 'meeting-room';
+    }
+    if (normalized.includes('recreational')) {
+      return 'recreational';
+    }
+    return 'desk';
   }
 
-  /**
-   * GET /rooms
-   * Get all rooms (desks) from backend
-   */
-  async getRooms(): Promise<{ message: string; rooms: BackendRoom[] }> {
-    const response = await this.fetchWithErrorHandling<{ message: string; rooms: BackendRoom[] }>(
-      `${API_BASE_URL}/rooms`
+  private roomToLegacyRoom(room: RoomApiModel, index: number): LegacyRoom {
+    const colCount = 12;
+    const row = Math.floor(index / colCount);
+    const col = index % colCount;
+    const x = 6 + col * 7.5;
+    const y = 8 + row * 8;
+    const type = this.mapRoomType(room.roomType);
+
+    const asDesk: Desk = {
+      id: room.id,
+      name: room.name,
+      floor: '4',
+      position: { x, y },
+      type,
+      status: 'available',
+      capacity: room.capacity,
+    };
+
+    return {
+      id: room.id,
+      data: JSON.stringify(asDesk),
+    };
+  }
+
+  private bookingToLegacy(booking: BookingApiModel): LegacyBooking {
+    const starts = this.parseDateTime(booking.startsAt);
+    const ends = this.parseDateTime(booking.endsAt);
+
+    return {
+      id: booking.id,
+      id_room: booking.roomId,
+      id_user: booking.userId,
+      date: starts.date,
+      start: starts.time,
+      end: ends.time,
+      status: (booking.status || '').toLowerCase(),
+      room_name: booking.roomName,
+    };
+  }
+
+  private async fetchWithErrorHandling<T>(url: string, options?: RequestInit): Promise<T> {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options?.headers || {}),
+      },
+    });
+
+    if (!response.ok) {
+      let message = `HTTP ${response.status}`;
+      try {
+        const payload = await response.json();
+        message = payload.error || payload.message || payload.details || payload.detail || message;
+      } catch {
+        // ignore body parsing errors
+      }
+      throw new Error(message);
+    }
+
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
+    return response.json() as Promise<T>;
+  }
+
+  async getRooms(): Promise<{ message: string; rooms: LegacyRoom[] }> {
+    const paged = await this.fetchWithErrorHandling<PagedResponse<RoomApiModel>>(
+      `${BOOKING_API_BASE_URL}/api/rooms?page=0&size=300&sortBy=name`,
+      {
+        headers: this.withAuthHeaders(),
+      }
     );
-    return response;
+
+    const legacyRooms = paged.content.map((room, idx) => this.roomToLegacyRoom(room, idx));
+    this.roomsCache = legacyRooms;
+
+    return {
+      message: 'List of rooms',
+      rooms: legacyRooms,
+    };
   }
 
-  /**
-   * POST /rooms/save
-   * Save all rooms (desks) to backend
-   */
   async saveRooms(desks: Desk[]): Promise<{ message: string; created: number; updated: number; deleted: number }> {
-    // Transform desks to backend format
-    const rooms = desks.map(desk => ({
-      id: desk.id,
-      data: JSON.stringify(desk),
-    }));
+    const currentRooms = await this.getRooms();
+    const existing = currentRooms.rooms;
+    const existingIds = new Set(existing.map((r) => r.id));
 
-    const response = await this.fetchWithErrorHandling<{ message: string; created: number; updated: number; deleted: number }>(
-      `${API_BASE_URL}/rooms/save`,
+    let created = 0;
+    let updated = 0;
+
+    for (const desk of desks) {
+      const payload = {
+        name: desk.name,
+        capacity: desk.capacity ?? 1,
+        roomType: (desk.type || 'desk').toUpperCase(),
+      };
+
+      if (existingIds.has(desk.id)) {
+        await this.fetchWithErrorHandling<RoomApiModel>(
+          `${BOOKING_API_BASE_URL}/api/rooms/${desk.id}`,
+          {
+            method: 'PUT',
+            headers: this.withAuthHeaders(),
+            body: JSON.stringify(payload),
+          }
+        );
+        updated++;
+      } else {
+        await this.fetchWithErrorHandling<RoomApiModel>(
+          `${BOOKING_API_BASE_URL}/api/rooms`,
+          {
+            method: 'POST',
+            headers: this.withAuthHeaders(),
+            body: JSON.stringify(payload),
+          }
+        );
+        created++;
+      }
+    }
+
+    return {
+      message: 'Saved via booking rooms API',
+      created,
+      updated,
+      deleted: 0,
+    };
+  }
+
+  async getBookings(): Promise<{ message: string; bookings: LegacyBooking[] }> {
+    const paged = await this.fetchWithErrorHandling<PagedResponse<BookingApiModel>>(
+      `${BOOKING_API_BASE_URL}/api/bookings?page=0&size=500`,
       {
-        method: 'POST',
-        body: JSON.stringify({ rooms }),
+        headers: this.withAuthHeaders(),
       }
     );
-    return response;
+
+    return {
+      message: 'List of bookings',
+      bookings: paged.content.map((b) => this.bookingToLegacy(b)),
+    };
   }
 
-  /**
-   * GET /bookings/booking
-   * Get all bookings from backend
-   */
-  async getBookings(): Promise<{ message: string; bookings: BackendBooking[] }> {
-    const response = await this.fetchWithErrorHandling<{ message: string; bookings: BackendBooking[] }>(
-      `${API_BASE_URL}/bookings/booking`
-    );
-    return response;
-  }
-
-  /**
-   * GET /users/bookings/user/{id_user}/next-two-weeks
-   * Get upcoming bookings for a specific user (next 2 weeks)
-   */
-  async getUserBookings(userId: number): Promise<{ user_id: number; user_name: string; bookings: Array<{ id: number; id_room: number; date: string; start: string; end: string }>; bookings_count: number; period: { start_date: string; end_date: string } }> {
-    const response = await this.fetchWithErrorHandling<{ user_id: number; user_name: string; bookings: Array<{ id: number; id_room: number; date: string; start: string; end: string }>; bookings_count: number; period: { start_date: string; end_date: string } }>(
-      `${API_BASE_URL}/users/bookings/user/${userId}/next-two-weeks`
-    );
-    return response;
-  }
-
-  /**
-   * GET /users/bookings/date/{date}
-   * Get all users' bookings for a specific date
-   */
-  async getBookingsByDate(date: string): Promise<{ date: string; total_bookings: number; users: Array<{ user_id: number; user_name: string; bookings_count: number; bookings: Array<{ id: number; id_room: number; date: string; start: string; end: string }> }> }> {
-    const response = await this.fetchWithErrorHandling<{ date: string; total_bookings: number; users: Array<{ user_id: number; user_name: string; bookings_count: number; bookings: Array<{ id: number; id_room: number; date: string; start: string; end: string }> }> }>(
-      `${API_BASE_URL}/users/bookings/date/${date}`
-    );
-    return response;
-  }
-
-  /**
-   * PUT /users/settings/{user_id}
-   * Update user settings (name, password, mood)
-   */
-  async updateUserSettings(userId: number, settings: { name?: string; password?: string; mood?: string }): Promise<{ success: boolean; message: string; user: any }> {
-    const response = await this.fetchWithErrorHandling<{ success: boolean; message: string; user: any }>(
-      `${API_BASE_URL}/users/settings/${userId}`,
+  async getUserBookings(userId: number): Promise<{
+    user_id: number;
+    user_name: string;
+    bookings: Array<{ id: number; id_room: number; date: string; start: string; end: string }>;
+    bookings_count: number;
+    period: { start_date: string; end_date: string };
+  }> {
+    const paged = await this.fetchWithErrorHandling<PagedResponse<BookingApiModel>>(
+      `${BOOKING_API_BASE_URL}/api/bookings?userId=${userId}&page=0&size=200`,
       {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(settings),
+        headers: this.withAuthHeaders(),
       }
     );
-    return response;
+
+    const today = new Date();
+    const end = new Date();
+    end.setDate(today.getDate() + 14);
+
+    const user = this.getStoredUser();
+
+    const bookings = paged.content
+      .map((b) => this.bookingToLegacy(b))
+      .filter((b) => {
+        const bookingDate = new Date(`${b.date}T00:00:00`);
+        return bookingDate >= today && bookingDate <= end;
+      })
+      .map((b) => ({
+        id: b.id,
+        id_room: b.id_room,
+        date: b.date,
+        start: b.start,
+        end: b.end,
+      }));
+
+    return {
+      user_id: userId,
+      user_name: user?.name || `User ${userId}`,
+      bookings,
+      bookings_count: bookings.length,
+      period: {
+        start_date: today.toISOString().split('T')[0],
+        end_date: end.toISOString().split('T')[0],
+      },
+    };
   }
 
-  // Team management methods
-  async getTeams(): Promise<any[]> {
-    const response = await this.fetchWithErrorHandling<any[]>(
-      `${API_BASE_URL}/teams`
+  async getBookingsByDate(date: string): Promise<{
+    date: string;
+    total_bookings: number;
+    users: Array<{
+      user_id: number;
+      user_name: string;
+      bookings_count: number;
+      bookings: Array<{ id: number; id_room: number; date: string; start: string; end: string }>;
+    }>;
+  }> {
+    const all = await this.getBookings();
+    const forDate = all.bookings.filter((b) => b.date === date);
+
+    let usersMap = new Map<number, LegacyUser>();
+    try {
+      const users = await this.getUsers();
+      usersMap = new Map(users.users.map((u) => [u.id, u]));
+    } catch {
+      // ignore users lookup errors
+    }
+
+    const grouped = new Map<number, Array<{ id: number; id_room: number; date: string; start: string; end: string }>>();
+    for (const booking of forDate) {
+      const list = grouped.get(booking.id_user) || [];
+      list.push({
+        id: booking.id,
+        id_room: booking.id_room,
+        date: booking.date,
+        start: booking.start,
+        end: booking.end,
+      });
+      grouped.set(booking.id_user, list);
+    }
+
+    return {
+      date,
+      total_bookings: forDate.length,
+      users: Array.from(grouped.entries()).map(([userId, bookings]) => ({
+        user_id: userId,
+        user_name: usersMap.get(userId)?.name || `User ${userId}`,
+        bookings_count: bookings.length,
+        bookings,
+      })),
+    };
+  }
+
+  async updateUserSettings(
+    userId: number,
+    settings: { name?: string; password?: string; mood?: string }
+  ): Promise<{ success: boolean; message: string; user: any }> {
+    const current = this.getStoredUser();
+    if (!current || current.id !== userId) {
+      throw new Error('User session not found. Please log in again.');
+    }
+
+    if (settings.password) {
+      throw new Error('Password change requires current password and is not supported by this screen yet.');
+    }
+
+    const updatedUser = {
+      ...current,
+      name: settings.name ?? current.name,
+      mood: settings.mood ?? (current as any).mood,
+    };
+
+    this.storeUser(updatedUser as LegacyUser);
+
+    return {
+      success: true,
+      message: 'Settings updated locally',
+      user: updatedUser,
+    };
+  }
+
+  async getTeams(): Promise<TeamWithMembers[]> {
+    const teamsPaged = await this.fetchWithErrorHandling<PagedResponse<TeamApiModel>>(
+      `${BOOKING_API_BASE_URL}/api/teams?page=0&size=200`,
+      {
+        headers: this.withAuthHeaders(),
+      }
     );
-    return response;
+
+    let usersMap = new Map<number, LegacyUser>();
+    try {
+      const usersResponse = await this.getUsers();
+      usersMap = new Map(usersResponse.users.map((u) => [u.id, u]));
+    } catch {
+      // In case /api/users is restricted for this role.
+    }
+
+    const teams = await Promise.all(
+      teamsPaged.content.map(async (team) => {
+        const members = await this.fetchWithErrorHandling<TeamMemberApiModel[]>(
+          `${BOOKING_API_BASE_URL}/api/teams/${team.id}/members`,
+          {
+            headers: this.withAuthHeaders(),
+          }
+        );
+
+        return {
+          id: team.id,
+          name: team.name,
+          description: team.description,
+          members: members.map((member) => {
+            const user = usersMap.get(member.userId);
+            return {
+              id: member.id,
+              userId: member.userId,
+              teamId: member.teamId,
+              user: {
+                id: member.userId,
+                name: user?.name || member.displayName || `User ${member.userId}`,
+                avatar: user?.avatar || '',
+                type: user?.type || 'EMPLOYEE',
+              },
+            };
+          }),
+        };
+      })
+    );
+
+    return teams;
   }
 
   async createTeam(teamData: { name: string; description?: string }): Promise<{ message: string; team: any }> {
-    const response = await this.fetchWithErrorHandling<{ message: string; team: any }>(
-      `${API_BASE_URL}/teams`,
+    const team = await this.fetchWithErrorHandling<TeamApiModel>(
+      `${BOOKING_API_BASE_URL}/api/teams`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(teamData),
+        headers: this.withAuthHeaders(),
+        body: JSON.stringify({
+          name: teamData.name,
+          description: teamData.description || 'N/A',
+        }),
       }
     );
-    return response;
+
+    return { message: 'Team created', team };
   }
 
   async updateTeam(teamId: number, teamData: { name?: string; description?: string }): Promise<{ message: string; team: any }> {
-    const response = await this.fetchWithErrorHandling<{ message: string; team: any }>(
-      `${API_BASE_URL}/teams/${teamId}`,
+    const existing = await this.fetchWithErrorHandling<TeamApiModel>(
+      `${BOOKING_API_BASE_URL}/api/teams/${teamId}`,
       {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(teamData),
+        headers: this.withAuthHeaders(),
       }
     );
-    return response;
+
+    const team = await this.fetchWithErrorHandling<TeamApiModel>(
+      `${BOOKING_API_BASE_URL}/api/teams/${teamId}`,
+      {
+        method: 'PUT',
+        headers: this.withAuthHeaders(),
+        body: JSON.stringify({
+          name: teamData.name ?? existing.name,
+          description: teamData.description ?? existing.description,
+        }),
+      }
+    );
+
+    return { message: 'Team updated', team };
   }
 
   async deleteTeam(teamId: number): Promise<{ message: string }> {
-    const response = await this.fetchWithErrorHandling<{ message: string }>(
-      `${API_BASE_URL}/teams/${teamId}`,
+    await this.fetchWithErrorHandling<void>(
+      `${BOOKING_API_BASE_URL}/api/teams/${teamId}`,
       {
         method: 'DELETE',
+        headers: this.withAuthHeaders(),
       }
     );
-    return response;
+    return { message: 'Team deleted' };
   }
 
   async addTeamMember(userId: number, teamId: number): Promise<{ message: string; member: any }> {
-    const response = await this.fetchWithErrorHandling<{ message: string; member: any }>(
-      `${API_BASE_URL}/teams/members`,
+    let displayName = `User ${userId}`;
+    try {
+      const users = await this.getUsers();
+      const user = users.users.find((u) => u.id === userId);
+      if (user) {
+        displayName = user.name;
+      }
+    } catch {
+      // ignore users lookup errors
+    }
+
+    const member = await this.fetchWithErrorHandling<TeamMemberApiModel>(
+      `${BOOKING_API_BASE_URL}/api/teams/${teamId}/members`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ userId, teamId }),
+        headers: this.withAuthHeaders(),
+        body: JSON.stringify({ userId, displayName }),
       }
     );
-    return response;
+
+    return { message: 'Member added', member };
   }
 
   async removeTeamMember(memberId: number): Promise<{ message: string }> {
-    const response = await this.fetchWithErrorHandling<{ message: string }>(
-      `${API_BASE_URL}/teams/members/${memberId}`,
+    const teams = await this.getTeams();
+    const ownerTeam = teams.find((team) => team.members.some((m) => m.id === memberId));
+    if (!ownerTeam) {
+      throw new Error('Team member not found');
+    }
+
+    await this.fetchWithErrorHandling<void>(
+      `${BOOKING_API_BASE_URL}/api/teams/${ownerTeam.id}/members/${memberId}`,
       {
         method: 'DELETE',
+        headers: this.withAuthHeaders(),
       }
     );
-    return response;
+
+    return { message: 'Member removed' };
   }
 
-  async getUserTeams(userId: number): Promise<{ message: string; teams: any[] }> {
-    const response = await this.fetchWithErrorHandling<{ message: string; teams: any[] }>(
-      `${API_BASE_URL}/teams/user/${userId}`
-    );
-    return response;
+  async getUserTeams(userId: number): Promise<{ message: string; teams: TeamWithMembers[] }> {
+    const teams = await this.getTeams();
+    const filtered = teams.filter((team) => team.members.some((member) => member.userId === userId));
+    return { message: 'User teams', teams: filtered };
   }
 
-  // Chat management methods
   async createOrGetChat(roomId: number, date: string, startTime: string, endTime: string): Promise<{ chat: any; messages: any[] }> {
     const response = await fetch(`${API_BASE_URL}/chats`, {
       method: 'POST',
@@ -328,14 +641,18 @@ class ApiService {
       },
       body: JSON.stringify({ roomId, date, startTime, endTime }),
     });
-    if (!response.ok) throw new Error('Failed to create/get chat');
-    return await response.json();
+    if (!response.ok) {
+      throw new Error('Failed to create/get chat');
+    }
+    return response.json();
   }
 
   async getChat(chatId: number): Promise<{ chat: any; messages: any[] }> {
     const response = await fetch(`${API_BASE_URL}/chats/${chatId}`);
-    if (!response.ok) throw new Error('Failed to get chat');
-    return await response.json();
+    if (!response.ok) {
+      throw new Error('Failed to get chat');
+    }
+    return response.json();
   }
 
   async sendMessage(chatId: number, userId: number, content: string): Promise<{ message: any }> {
@@ -346,239 +663,278 @@ class ApiService {
       },
       body: JSON.stringify({ chatId, userId, content }),
     });
-    if (!response.ok) throw new Error('Failed to send message');
-    return await response.json();
+    if (!response.ok) {
+      throw new Error('Failed to send message');
+    }
+    return response.json();
   }
 
   async getUserChats(userId: number): Promise<{ chats: any[] }> {
     const response = await fetch(`${API_BASE_URL}/chats/users/${userId}/chats`);
-    if (!response.ok) throw new Error('Failed to get user chats');
-    return await response.json();
+    if (!response.ok) {
+      throw new Error('Failed to get user chats');
+    }
+    return response.json();
   }
 
-  /**
-   * POST /bookings/booking
-   * Create a new booking in backend
-   * Backend expects: { id_room, id_user, date: "YYYY-MM-DD", start: "HH:MM", end: "HH:MM" }
-   */
-  async createBooking(booking: { id_room: number; id_user: number; date: string; start: string; end: string }): Promise<{ message: string; booking: any; status?: string }> {
-    const response = await this.fetchWithErrorHandling<{ message: string; booking: any; status?: string }>(
-      `${API_BASE_URL}/bookings/booking`,
+  async createBooking(booking: { id_room: number; id_user: number; date: string; start: string; end: string; teamId?: number }): Promise<{ message: string; booking: any; status?: string }> {
+    const created = await this.fetchWithErrorHandling<BookingApiModel>(
+      `${BOOKING_API_BASE_URL}/api/bookings`,
       {
         method: 'POST',
-        body: JSON.stringify(booking),
+        headers: this.withAuthHeaders(),
+        body: JSON.stringify({
+          userId: booking.id_user,
+          roomId: booking.id_room,
+          teamId: booking.teamId ?? null,
+          startsAt: this.toIso(booking.date, booking.start),
+          endsAt: this.toIso(booking.date, booking.end),
+        }),
       }
     );
-    return response;
-  }
 
-  /**
-   * PUT /bookings/booking/{booking_id}
-   * Update a booking by ID
-   */
-  async updateBooking(bookingId: number, booking: { date: string; start: string; end: string }): Promise<{ message: string; booking: any }> {
-    const response = await this.fetchWithErrorHandling<{ message: string; booking: any }>(
-      `${API_BASE_URL}/bookings/booking/${bookingId}`,
-      {
-        method: 'PUT',
-        body: JSON.stringify(booking),
-      }
-    );
-    return response;
-  }
-
-  /**
-   * DELETE /bookings/booking/{booking_id}
-   * Delete a booking by ID
-   */
-  async deleteBooking(bookingId: number): Promise<{ message: string; booking: any }> {
-    const response = await this.fetchWithErrorHandling<{ message: string; booking: any }>(
-      `${API_BASE_URL}/bookings/booking/${bookingId}`,
-      {
-        method: 'DELETE',
-      }
-    );
-    return response;
-  }
-
-  /**
-   * GET /bookings/pending
-   * Get all pending bookings that require manager approval
-   */
-  async getPendingBookings(): Promise<{ message: string; bookings: any[] }> {
-    const response = await this.fetchWithErrorHandling<{ message: string; bookings: any[] }>(
-      `${API_BASE_URL}/bookings/pending`
-    );
-    return response;
-  }
-
-  /**
-   * PUT /bookings/booking/{booking_id}/approve
-   * Approve a pending booking
-   */
-  async approveBooking(bookingId: number): Promise<{ message: string; booking: any }> {
-    const response = await this.fetchWithErrorHandling<{ message: string; booking: any }>(
-      `${API_BASE_URL}/bookings/booking/${bookingId}/approve`,
-      {
-        method: 'PUT',
-      }
-    );
-    return response;
-  }
-
-  /**
-   * PUT /bookings/booking/{booking_id}/reject
-   * Reject a pending booking
-   */
-  async rejectBooking(bookingId: number): Promise<{ message: string; booking: any }> {
-    const response = await this.fetchWithErrorHandling<{ message: string; booking: any }>(
-      `${API_BASE_URL}/bookings/booking/${bookingId}/reject`,
-      {
-        method: 'PUT',
-      }
-    );
-    return response;
-  }
-
-  /**
-   * GET /users
-   * Get all users from backend
-   */
-  async getUsers(): Promise<{ message: string; users: BackendUser[] }> {
-    // Wait for users to be loaded if not already
-    if (!this.usersLoaded) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    
     return {
-      message: 'List of users',
-      users: this.users,
+      message: 'Booking created',
+      booking: this.bookingToLegacy(created),
+      status: (created.status || '').toLowerCase(),
     };
   }
 
-  /**
-   * POST /users/login
-   * Authenticate user with username and password
-   */
+  async updateBooking(bookingId: number, booking: { date: string; start: string; end: string }): Promise<{ message: string; booking: any }> {
+    const current = await this.fetchWithErrorHandling<BookingApiModel>(
+      `${BOOKING_API_BASE_URL}/api/bookings/${bookingId}`,
+      {
+        headers: this.withAuthHeaders(),
+      }
+    );
+
+    await this.fetchWithErrorHandling<void>(
+      `${BOOKING_API_BASE_URL}/api/bookings/${bookingId}`,
+      {
+        method: 'DELETE',
+        headers: this.withAuthHeaders(),
+      }
+    );
+
+    const recreated = await this.fetchWithErrorHandling<BookingApiModel>(
+      `${BOOKING_API_BASE_URL}/api/bookings`,
+      {
+        method: 'POST',
+        headers: this.withAuthHeaders(),
+        body: JSON.stringify({
+          userId: current.userId,
+          roomId: current.roomId,
+          teamId: current.teamId,
+          startsAt: this.toIso(booking.date, booking.start),
+          endsAt: this.toIso(booking.date, booking.end),
+        }),
+      }
+    );
+
+    return {
+      message: 'Booking updated by recreate flow',
+      booking: this.bookingToLegacy(recreated),
+    };
+  }
+
+  async deleteBooking(bookingId: number): Promise<{ message: string; booking: any }> {
+    await this.fetchWithErrorHandling<void>(
+      `${BOOKING_API_BASE_URL}/api/bookings/${bookingId}`,
+      {
+        method: 'DELETE',
+        headers: this.withAuthHeaders(),
+      }
+    );
+
+    return {
+      message: 'Booking deleted',
+      booking: null,
+    };
+  }
+
+  async getPendingBookings(): Promise<{ message: string; bookings: any[] }> {
+    const paged = await this.fetchWithErrorHandling<PagedResponse<BookingApiModel>>(
+      `${BOOKING_API_BASE_URL}/api/bookings?status=PENDING&page=0&size=200`,
+      {
+        headers: this.withAuthHeaders(),
+      }
+    );
+
+    let usersMap = new Map<number, LegacyUser>();
+    try {
+      const users = await this.getUsers();
+      usersMap = new Map(users.users.map((u) => [u.id, u]));
+    } catch {
+      // ignore users lookup errors
+    }
+
+    const bookings = paged.content.map((booking) => {
+      const legacy = this.bookingToLegacy(booking);
+      const user = usersMap.get(booking.userId);
+      return {
+        ...legacy,
+        user: user
+          ? { id: user.id, name: user.name, avatar: user.avatar, type: user.type }
+          : null,
+      };
+    });
+
+    return {
+      message: 'Pending bookings',
+      bookings,
+    };
+  }
+
+  async approveBooking(bookingId: number): Promise<{ message: string; booking: any }> {
+    const updated = await this.fetchWithErrorHandling<BookingApiModel>(
+      `${BOOKING_API_BASE_URL}/api/bookings/${bookingId}/approve`,
+      {
+        method: 'PUT',
+        headers: this.withAuthHeaders(),
+      }
+    );
+    return { message: 'Booking approved', booking: this.bookingToLegacy(updated) };
+  }
+
+  async rejectBooking(bookingId: number): Promise<{ message: string; booking: any }> {
+    const updated = await this.fetchWithErrorHandling<BookingApiModel>(
+      `${BOOKING_API_BASE_URL}/api/bookings/${bookingId}/reject`,
+      {
+        method: 'PUT',
+        headers: this.withAuthHeaders(),
+      }
+    );
+    return { message: 'Booking rejected', booking: this.bookingToLegacy(updated) };
+  }
+
+  async getUsers(): Promise<{ message: string; users: LegacyUser[] }> {
+    try {
+      const paged = await this.fetchWithErrorHandling<PagedResponse<AuthUserView>>(
+        `${AUTH_API_BASE_URL}/api/users?page=0&size=300`,
+        {
+          headers: this.withAuthHeaders(),
+        }
+      );
+
+      const users = paged.content.map((u) => this.toLegacyUser(u));
+      this.usersCache = users;
+
+      return {
+        message: 'List of users',
+        users,
+      };
+    } catch (error) {
+      const current = this.getStoredUser();
+      if (current) {
+        return { message: 'Fallback current user', users: [current] };
+      }
+      throw error;
+    }
+  }
+
   async login(username: string, password: string): Promise<LoginResponse> {
-    const response = await this.fetchWithErrorHandling<LoginResponse>(
-      `${API_BASE_URL}/users/login`,
+    const response = await this.fetchWithErrorHandling<LoginApiResponse>(
+      `${AUTH_API_BASE_URL}/api/auth/login`,
       {
         method: 'POST',
         body: JSON.stringify({ username, password }),
       }
     );
-    return response;
+
+    const legacyUser = this.toLegacyUser(response.user);
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('authToken', response.token);
+      localStorage.setItem('user', JSON.stringify(legacyUser));
+      localStorage.setItem('isAuthenticated', 'true');
+    }
+
+    return {
+      success: true,
+      message: 'Login successful',
+      user: legacyUser,
+    };
   }
 
-  /**
-   * PUT /users/avatar
-   * Update user avatar
-   */
   async updateAvatar(userId: number, avatar: string): Promise<UpdateAvatarResponse> {
-    const response = await this.fetchWithErrorHandling<UpdateAvatarResponse>(
-      `${API_BASE_URL}/users/avatar`,
-      {
-        method: 'PUT',
-        body: JSON.stringify({ user_id: userId, avatar }),
-      }
-    );
-    return response;
+    const current = this.getStoredUser();
+    if (!current || current.id !== userId) {
+      throw new Error('User not found in local session');
+    }
+
+    const updated = { ...current, avatar };
+    this.storeUser(updated);
+
+    return {
+      success: true,
+      message: 'Avatar updated locally',
+      user: updated,
+    };
   }
 
-  /**
-   * Transform backend data to frontend Desk format
-   * @param filterDate Optional date string (YYYY-MM-DD) to filter bookings by date
-   */
-  async transformRoomsToDesks(rooms: BackendRoom[], bookings: BackendBooking[], filterDate?: string): Promise<Desk[]> {
-    // Ensure users are loaded
-    if (!this.usersLoaded) {
-      await this.loadUsers();
+  async transformRoomsToDesks(rooms: LegacyRoom[], bookings: LegacyBooking[], filterDate?: string): Promise<Desk[]> {
+    let usersMap = new Map<number, LegacyUser>();
+    try {
+      const users = await this.getUsers();
+      usersMap = new Map(users.users.map((u) => [u.id, u]));
+    } catch {
+      usersMap = new Map(this.usersCache.map((u) => [u.id, u]));
     }
 
-    // Filter bookings by date if filterDate is provided
-    let filteredBookings = bookings;
-    if (filterDate) {
-      filteredBookings = bookings.filter(b => b.date === filterDate);
-    }
+    const filteredBookings = filterDate ? bookings.filter((b) => b.date === filterDate) : bookings;
 
-    const desks: Desk[] = rooms.map(room => {
-      const desk: Desk = JSON.parse(room.data);
-      
-      // Find bookings for this room (already filtered by date if filterDate was provided)
-      // Only show approved or active bookings (filter out pending and rejected)
-      const roomBookings = filteredBookings.filter(b => {
-        if (b.id_room !== room.id) return false;
-        const status = b.status || 'active';
-        return status === 'approved' || status === 'active';
-      });
-      
-      if (roomBookings.length > 0) {
-        // For meeting rooms and recreational spaces, use bookings array
-        if (desk.type === 'meeting-room' || desk.type === 'recreational') {
-          desk.bookings = roomBookings.map(booking => {
-            // Backend returns: date (YYYY-MM-DD), start (HH:MM), end (HH:MM)
-            const date = booking.date || '';
-            const startTime = booking.start || '';
-            const endTime = booking.end || '';
-            // Use user data from booking if available, otherwise fallback to users list
-            const user = booking.user || this.users.find(u => u.id === booking.id_user);
-            
-            return {
+    return rooms.map((room) => {
+      const desk = JSON.parse(room.data) as Desk;
+      const roomBookings = filteredBookings.filter((b) => b.id_room === room.id);
+
+      if (roomBookings.length === 0) {
+        return {
+          ...desk,
+          status: 'available',
+          bookedBy: undefined,
+          bookedByAvatar: undefined,
+          bookedDate: undefined,
+          bookedStartTime: undefined,
+          bookedEndTime: undefined,
+          bookings: desk.type === 'meeting-room' || desk.type === 'recreational' ? [] : desk.bookings,
+        };
+      }
+
+      if (desk.type === 'meeting-room' || desk.type === 'recreational') {
+        return {
+          ...desk,
+          bookings: roomBookings
+            .filter((booking) => (booking.status || '').toLowerCase() === 'approved' || (booking.status || '').toLowerCase() === 'active')
+            .map((booking) => ({
               deskId: desk.id,
-              userName: user?.name || 'Unknown',
-              date,
-              startTime,
-              endTime,
-            };
-          });
-        } else {
-          // For regular desks, use the first booking
-          const firstBooking = roomBookings[0];
-          // Backend returns: date (YYYY-MM-DD), start (HH:MM), end (HH:MM)
-          const date = firstBooking.date || '';
-          const startTime = firstBooking.start || '';
-          const endTime = firstBooking.end || '';
-          
-          // Use user data from booking if available, otherwise fallback to users list
-          const user = firstBooking.user || this.users.find(u => u.id === firstBooking.id_user);
-          
-          desk.status = 'booked';
-          desk.bookedBy = user?.name || 'Unknown';
-          // Get avatar from user - ensure it's not empty string
-          const avatar = user?.avatar || '';
-          desk.bookedByAvatar = (avatar && avatar.trim() !== '') ? avatar : undefined;
-          // Get mood from user
-          desk.bookedByMood = user?.mood || 'happy';
-          desk.bookedDate = date;
-          desk.bookedStartTime = startTime;
-          desk.bookedEndTime = endTime;
-        }
-      } else {
-        // No bookings for this date - reset desk to available
-        if (desk.type === 'meeting-room' || desk.type === 'recreational') {
-          desk.bookings = [];
-        } else {
-          desk.status = 'available';
-          desk.bookedBy = undefined;
-          desk.bookedByAvatar = undefined;
-          desk.bookedByMood = undefined;
-          desk.bookedDate = undefined;
-          desk.bookedStartTime = undefined;
-          desk.bookedEndTime = undefined;
-        }
+              userName: usersMap.get(booking.id_user)?.name || `User ${booking.id_user}`,
+              date: booking.date,
+              startTime: booking.start,
+              endTime: booking.end,
+            })),
+        };
       }
-      
-      return desk;
+
+      const selected =
+        roomBookings.find((b) => (b.status || '').toLowerCase() === 'approved') ||
+        roomBookings.find((b) => (b.status || '').toLowerCase() === 'active') ||
+        roomBookings[0];
+
+      const user = usersMap.get(selected.id_user);
+
+      return {
+        ...desk,
+        status: (selected.status || '').toLowerCase() === 'rejected' ? 'available' : 'booked',
+        bookedBy: user?.name || `User ${selected.id_user}`,
+        bookedByAvatar: user?.avatar || undefined,
+        bookedByMood: (user as any)?.mood || 'happy',
+        bookedDate: selected.date,
+        bookedStartTime: selected.start,
+        bookedEndTime: selected.end,
+      };
     });
-    
-    return desks;
   }
 
-  /**
-   * Transform frontend booking to backend format
-   * Backend expects: { id_room, id_user, date: "YYYY-MM-DD", start: "HH:MM", end: "HH:MM" }
-   */
   async transformBookingToBackend(
     deskId: number,
     date: string,
@@ -586,110 +942,23 @@ class ApiService {
     endTime: string,
     userName?: string
   ): Promise<{ id_room: number; id_user: number; date: string; start: string; end: string }> {
-    // Get user ID from localStorage if available, otherwise fallback to name lookup
-    let userId: number;
-    if (typeof window !== 'undefined') {
-      const userStr = localStorage.getItem('user');
-      if (userStr) {
-        try {
-          const user = JSON.parse(userStr);
-          userId = user.id;
-        } catch {
-          // Fallback to name lookup
-          userId = await this.getUserIdByName(userName || 'You');
-        }
-      } else {
-        userId = await this.getUserIdByName(userName || 'You');
-      }
-    } else {
-      userId = await this.getUserIdByName(userName || 'You');
+    const current = this.getStoredUser();
+    let userId = current?.id;
+
+    if (!userId && userName) {
+      const users = await this.getUsers();
+      userId = users.users.find((u) => u.name === userName)?.id;
     }
-    
+
     return {
       id_room: deskId,
-      id_user: userId,
-      date: date, // Already in YYYY-MM-DD format
-      start: startTime, // Time format like "09:00"
-      end: endTime, // Time format like "17:00"
+      id_user: userId || 1,
+      date,
+      start: startTime,
+      end: endTime,
     };
   }
 }
 
-// Export singleton instance
 export const apiService = new ApiService();
-
-// Keep mock service for fallback/development
-class MockApiService {
-  private rooms: BackendRoom[] = [];
-  private bookings: BackendBooking[] = [];
-  private users: BackendUser[] = [
-    { id: 1, name: 'You', password: '', avatar: '', type: 'EMPLOYEE' },
-  ];
-
-  constructor() {
-    this.initializeMockData();
-  }
-
-  private initializeMockData() {
-    // Check if we're in browser (not SSR)
-    if (typeof window === 'undefined') {
-      // In SSR, just use generated desks
-      const desks = generate216Desks();
-      this.rooms = desks.map(desk => ({
-        id: desk.id,
-        data: JSON.stringify(desk),
-      }));
-      return;
-    }
-
-    const savedDesks = localStorage.getItem('desk-layout');
-    let desks: Desk[];
-    
-    if (savedDesks) {
-      try {
-        desks = JSON.parse(savedDesks);
-      } catch (error) {
-        desks = generate216Desks();
-      }
-    } else {
-      desks = generate216Desks();
-    }
-    
-    this.rooms = desks.map(desk => ({
-      id: desk.id,
-      data: JSON.stringify(desk),
-    }));
-  }
-
-  async getRooms() {
-    return { message: 'List of rooms', rooms: this.rooms };
-  }
-
-  async getBookings() {
-    return { message: 'List of bookings', bookings: this.bookings };
-  }
-
-  async createBooking(booking: Omit<BackendBooking, 'id'>) {
-    const newBooking: BackendBooking = {
-      id: Date.now(),
-      ...booking,
-    };
-    this.bookings.push(newBooking);
-    return { message: 'Booking created', booking: newBooking };
-  }
-
-  async getUsers() {
-    return { message: 'List of users', users: this.users };
-  }
-
-  async transformRoomsToDesks(rooms: BackendRoom[], bookings: BackendBooking[]): Promise<Desk[]> {
-    return await apiService.transformRoomsToDesks(rooms, bookings);
-  }
-
-  async transformBookingToBackend(deskId: number, date: string, startTime: string, endTime: string, userName: string) {
-    return await apiService.transformBookingToBackend(deskId, date, startTime, endTime, userName);
-  }
-}
-
-export const mockApiService = new MockApiService();
-
+export const mockApiService = apiService;

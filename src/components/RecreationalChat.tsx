@@ -17,6 +17,7 @@ import {
 import SendIcon from '@mui/icons-material/Send';
 import CloseIcon from '@mui/icons-material/Close';
 import ChatIcon from '@mui/icons-material/Chat';
+import { API_BASE_URL, API_WS_URL } from '@/services/api';
 
 interface Message {
   id: number;
@@ -95,7 +96,7 @@ export default function RecreationalChat({
       setLoading(true);
       
       // Create or get chat
-      const response = await fetch('http://localhost:8000/chats', {
+      const response = await fetch(`${API_BASE_URL}/chats`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -143,7 +144,7 @@ export default function RecreationalChat({
     }
 
     // Create new WebSocket connection
-    const ws = new WebSocket(`ws://localhost:8000/chats/ws/${chatId}`);
+    const ws = new WebSocket(`${API_WS_URL}/chats/ws/${chatId}`);
 
     ws.onopen = () => {
       console.log('WebSocket connected');
@@ -188,7 +189,7 @@ export default function RecreationalChat({
 
     try {
       setSending(true);
-      const response = await fetch('http://localhost:8000/chats/messages', {
+      const response = await fetch(`${API_BASE_URL}/chats/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

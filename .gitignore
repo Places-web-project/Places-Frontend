@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+# Next.js
+.next/
+out/
+# Build / cache
+build/
+dist/
+*.tsbuildinfo
+.eslintcache
+# Testing
+coverage/
+# Environment (keep .env.example in repo if you use one)
+.env
+.env*.local
+# Vercel
+.vercel
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+# OS
+.DS_Store
+Thumbs.db
+# Editors
+.idea/
+*.swp
+*.swo
+*~
+
+next-env.d.ts

@@ -14,6 +14,7 @@ import {
 } from '@mui/material';
 import ChatIcon from '@mui/icons-material/Chat';
 import NotificationsIcon from '@mui/icons-material/Notifications';
+import { API_BASE_URL } from '@/services/api';
 
 interface UserChat {
   id: number;
@@ -57,7 +58,7 @@ export default function ChatNotifications({ userId, onChatClick }: ChatNotificat
 
   const loadUserChats = async () => {
     try {
-      const response = await fetch(`http://localhost:8000/chats/users/${userId}/chats`);
+      const response = await fetch(`${API_BASE_URL}/chats/users/${userId}/chats`);
       if (!response.ok) return;
 
       const data = await response.json();
