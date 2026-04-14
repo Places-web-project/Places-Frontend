@@ -269,7 +269,7 @@ export default function LoginPage() {
           </Box>
 
           {/* Sign Up Link */}
-          {/* <Box sx={{ textAlign: 'center', mt: 3 }}>
+          <Box sx={{ textAlign: 'center', mt: 3 }}>
             <Typography
               variant="body2"
               sx={{
@@ -279,7 +279,7 @@ export default function LoginPage() {
             >
               Don't have an account?{' '}
               <Link
-                href="#"
+                href="/register"
                 sx={{
                   color: '#1e40af',
                   textDecoration: 'none',
@@ -292,7 +292,7 @@ export default function LoginPage() {
                 Sign up
               </Link>
             </Typography>
-          </Box> */}
+          </Box>
         </CardContent>
       </Card>
     </Box>

@@ -26,6 +26,7 @@ import {
   TextField,
   Alert,
   Chip,
+  TablePagination,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -64,6 +65,10 @@ export default function YourBookingsPage() {
   const [editEndTime, setEditEndTime] = useState('');
   const [editError, setEditError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingBookingId, setDeletingBookingId] = useState<string | null>(null);
 
   useEffect(() => {
     loadBookings();
@@ -71,6 +76,10 @@ export default function YourBookingsPage() {
 
   useEffect(() => {
     filterBookings();
+  }, [workspaceType, bookings]);
+
+  useEffect(() => {
+    setPage(0);
   }, [workspaceType, bookings]);
 
   const loadBookings = async () => {
@@ -251,15 +260,25 @@ export default function YourBookingsPage() {
     }
   };
 
-  const handleDelete = async (bookingId: string) => {
-    if (!confirm('Are you sure you want to delete this booking?')) {
+  const handleDeleteClick = (bookingId: string) => {
+    setDeletingBookingId(bookingId);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleCloseDeleteDialog = () => {
+    setDeleteDialogOpen(false);
+    setDeletingBookingId(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingBookingId) {
       return;
     }
-
     try {
-      await apiService.deleteBooking(parseInt(bookingId));
+      await apiService.deleteBooking(parseInt(deletingBookingId));
       // Reload bookings after deletion
       await loadBookings();
+      handleCloseDeleteDialog();
     } catch (error) {
       console.error('Failed to delete booking:', error);
       alert('Failed to delete booking. Please try again.');
@@ -331,6 +350,8 @@ export default function YourBookingsPage() {
     }
   };
 
+  const paginatedBookings = filteredBookings.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+
   return (
     <Box sx={{ p: 4, bgcolor: '#ffffff', minHeight: '100vh' }}>
       <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 4 }}>
@@ -383,7 +404,7 @@ export default function YourBookingsPage() {
                   </TableCell>
                 </TableRow>
               ) : filteredBookings.length > 0 ? (
-                filteredBookings.map((booking) => (
+                paginatedBookings.map((booking) => (
                   <TableRow key={booking.id} sx={{ '&:hover': { bgcolor: '#f9fafb' } }}>
                     <TableCell>{booking.workspace}</TableCell>
                     <TableCell>{booking.type}</TableCell>
@@ -420,7 +441,7 @@ export default function YourBookingsPage() {
                         </IconButton>
                         <IconButton
                           size="small"
-                          onClick={() => handleDelete(booking.id)}
+                          onClick={() => handleDeleteClick(booking.id)}
                           sx={{ color: '#ef4444' }}
                         >
                           <DeleteIcon fontSize="small" />
@@ -439,6 +460,18 @@ export default function YourBookingsPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        <TablePagination
+          component="div"
+          count={filteredBookings.length}
+          page={page}
+          onPageChange={(_, nextPage) => setPage(nextPage)}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={(event) => {
+            setRowsPerPage(parseInt(event.target.value, 10));
+            setPage(0);
+          }}
+          rowsPerPageOptions={[5, 10, 25]}
+        />
       </Paper>
 
       {/* Edit Booking Dialog */}
@@ -528,6 +561,21 @@ export default function YourBookingsPage() {
             }}
           >
             {saving ? 'Saving...' : 'Save Changes'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={deleteDialogOpen} onClose={handleCloseDeleteDialog} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete booking</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            Are you sure you want to delete this booking? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDeleteDialog}>Cancel</Button>
+          <Button onClick={handleConfirmDelete} color="error" variant="contained">
+            Delete
           </Button>
         </DialogActions>
       </Dialog>

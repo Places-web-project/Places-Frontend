@@ -14,6 +14,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TablePagination,
   CircularProgress,
   Chip,
   FormControl,
@@ -336,6 +337,8 @@ export default function OfficeStatisticsPage() {
   const [dateRange, setDateRange] = useState<'week' | 'month' | 'all'>('week');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [userTablePage, setUserTablePage] = useState(0);
+  const [userTableRowsPerPage, setUserTableRowsPerPage] = useState(10);
 
   useEffect(() => {
     loadStatistics();
@@ -346,6 +349,10 @@ export default function OfficeStatisticsPage() {
       loadStatistics();
     }
   }, [dateRange]);
+
+  useEffect(() => {
+    setUserTablePage(0);
+  }, [searchQuery, dateRange]);
 
   const loadStatistics = async () => {
     setLoading(true);
@@ -505,6 +512,10 @@ export default function OfficeStatisticsPage() {
     const query = searchQuery.toLowerCase();
     return stat.userName.toLowerCase().includes(query);
   });
+  const paginatedUserStats = filteredUserStats.slice(
+    userTablePage * userTableRowsPerPage,
+    userTablePage * userTableRowsPerPage + userTableRowsPerPage
+  );
 
   // Export to CSV function
   const exportToCSV = () => {
@@ -790,7 +801,7 @@ export default function OfficeStatisticsPage() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredUserStats.map((stat) => {
+                    paginatedUserStats.map((stat) => {
                       const user = users.find((u) => u.id === stat.userId);
                       return (
                         <TableRow key={stat.userId} hover>
@@ -873,6 +884,18 @@ export default function OfficeStatisticsPage() {
                 </TableBody>
               </Table>
             </TableContainer>
+            <TablePagination
+              component="div"
+              count={filteredUserStats.length}
+              page={userTablePage}
+              onPageChange={(_, nextPage) => setUserTablePage(nextPage)}
+              rowsPerPage={userTableRowsPerPage}
+              onRowsPerPageChange={(event) => {
+                setUserTableRowsPerPage(parseInt(event.target.value, 10));
+                setUserTablePage(0);
+              }}
+              rowsPerPageOptions={[5, 10, 25]}
+            />
           </Paper>
         </Grid>
 

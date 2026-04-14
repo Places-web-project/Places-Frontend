@@ -29,6 +29,7 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import EditIcon from '@mui/icons-material/Edit';
 import LogoutIcon from '@mui/icons-material/Logout';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
+import FeedbackIcon from '@mui/icons-material/Feedback';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import GroupsIcon from '@mui/icons-material/Groups';
 import BarChartIcon from '@mui/icons-material/BarChart';
@@ -55,7 +56,7 @@ export default function SideNavbar({ children }: SideNavbarProps) {
     pathname?.includes('/home/booking-grid')
   );
   const [userSettingsOpen, setUserSettingsOpen] = useState(
-    pathname === '/avatar-builder' || pathname === '/home/settings' || pathname === '/home/points'
+    pathname === '/avatar-builder' || pathname === '/home/settings' || pathname === '/home/points' || pathname === '/home/feedback'
   );
   const [managementOpen, setManagementOpen] = useState(
     pathname?.includes('/home/management')
@@ -205,7 +206,7 @@ export default function SideNavbar({ children }: SideNavbarProps) {
     );
     // Update user settings open state based on pathname
     setUserSettingsOpen(
-      pathname === '/avatar-builder' || pathname === '/home/settings' || pathname === '/home/points'
+      pathname === '/avatar-builder' || pathname === '/home/settings' || pathname === '/home/points' || pathname === '/home/feedback'
     );
     // Update management open state based on pathname
     setManagementOpen(pathname?.includes('/home/management'));
@@ -248,6 +249,7 @@ export default function SideNavbar({ children }: SideNavbarProps) {
 
   const userSettingsSubmenu = [
     { id: 'General Settings', label: 'General Settings', path: '/home/settings', icon: <SettingsIcon /> },
+    { id: 'Feedback', label: 'Feedback', path: '/home/feedback', icon: <FeedbackIcon /> },
     { id: 'Edit avatar', label: 'Edit avatar', path: '/avatar-builder', icon: <EditIcon /> },
   ];
 

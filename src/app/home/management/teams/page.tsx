@@ -73,6 +73,8 @@ export default function TeamManagementPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [addMemberDialogOpen, setAddMemberDialogOpen] = useState(false);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [teamToDelete, setTeamToDelete] = useState<Team | null>(null);
   
   // Form states
   const [teamName, setTeamName] = useState('');
@@ -148,10 +150,6 @@ export default function TeamManagementPage() {
   };
 
   const handleDeleteTeam = async (teamId: number) => {
-    if (!confirm('Are you sure you want to delete this team? All team members will be removed.')) {
-      return;
-    }
-
     try {
       await apiService.deleteTeam(teamId);
       setSuccess('Team deleted successfully');
@@ -161,6 +159,16 @@ export default function TeamManagementPage() {
       setError(err.message || 'Failed to delete team');
       setTimeout(() => setError(null), 3000);
     }
+  };
+
+  const handleDeleteTeamClick = (team: Team) => {
+    setTeamToDelete(team);
+    setDeleteDialogOpen(true);
+  };
+
+  const closeDeleteDialog = () => {
+    setDeleteDialogOpen(false);
+    setTeamToDelete(null);
   };
 
   const handleAddMember = async () => {
@@ -313,7 +321,7 @@ export default function TeamManagementPage() {
                   </IconButton>
                   <IconButton
                     size="small"
-                    onClick={() => handleDeleteTeam(team.id)}
+                    onClick={() => handleDeleteTeamClick(team)}
                     sx={{ color: '#ef4444' }}
                   >
                     <DeleteIcon />
@@ -480,6 +488,33 @@ export default function TeamManagementPage() {
             disabled={!selectedUserId || (selectedTeam && getAvailableUsers(selectedTeam).length === 0)}
           >
             Add
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={deleteDialogOpen} onClose={closeDeleteDialog} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete team</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            {teamToDelete
+              ? `Are you sure you want to delete "${teamToDelete.name}"? All team members will be removed.`
+              : 'Are you sure you want to delete this team?'}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeDeleteDialog}>Cancel</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={async () => {
+              if (!teamToDelete) {
+                return;
+              }
+              await handleDeleteTeam(teamToDelete.id);
+              closeDeleteDialog();
+            }}
+          >
+            Delete
           </Button>
         </DialogActions>
       </Dialog>

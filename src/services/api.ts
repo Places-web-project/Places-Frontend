@@ -3,6 +3,7 @@ import { Desk } from '@/types/desk';
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 export const AUTH_API_BASE_URL = process.env.NEXT_PUBLIC_AUTH_API_URL || API_BASE_URL;
 export const BOOKING_API_BASE_URL = process.env.NEXT_PUBLIC_BOOKING_API_URL || API_BASE_URL;
+export const NOTIFICATION_API_BASE_URL = process.env.NEXT_PUBLIC_NOTIFICATION_API_URL || API_BASE_URL;
 export const API_WS_URL = process.env.NEXT_PUBLIC_WS_URL || API_BASE_URL.replace(/^http/, 'ws');
 
 interface PagedResponse<T> {
@@ -26,6 +27,17 @@ interface LoginApiResponse {
   tokenType: string;
   expiresInMs: number;
   user: AuthUserView;
+}
+
+interface FeedbackApiRequest {
+  category: string;
+  experience: string;
+  recommend: boolean;
+  message: string;
+}
+
+interface FeedbackApiResponse extends FeedbackApiRequest {
+  id: number;
 }
 
 interface BookingApiModel {
@@ -127,6 +139,13 @@ type UpdateAvatarResponse = {
     avatar: string;
     type: string;
   } | null;
+};
+
+type FeedbackFormPayload = {
+  category: string;
+  experience: string;
+  recommend: boolean;
+  message: string;
 };
 
 class ApiService {
@@ -854,6 +873,54 @@ class ApiService {
       message: 'Login successful',
       user: legacyUser,
     };
+  }
+
+  async register(username: string, email: string, password: string): Promise<LoginResponse> {
+    const response = await this.fetchWithErrorHandling<LoginApiResponse>(
+      `${AUTH_API_BASE_URL}/api/auth/register`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          username,
+          email,
+          password,
+        }),
+      }
+    );
+
+    const legacyUser = this.toLegacyUser(response.user);
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('authToken', response.token);
+      localStorage.setItem('user', JSON.stringify(legacyUser));
+      localStorage.setItem('isAuthenticated', 'true');
+    }
+
+    return {
+      success: true,
+      message: 'Registration successful',
+      user: legacyUser,
+    };
+  }
+
+  async submitFeedback(payload: FeedbackFormPayload): Promise<FeedbackApiResponse> {
+    return this.fetchWithErrorHandling<FeedbackApiResponse>(
+      `${NOTIFICATION_API_BASE_URL}/api/feedback`,
+      {
+        method: 'POST',
+        headers: this.withAuthHeaders(),
+        body: JSON.stringify(payload),
+      }
+    );
+  }
+
+  async getFeedbackEntries(): Promise<FeedbackApiResponse[]> {
+    return this.fetchWithErrorHandling<FeedbackApiResponse[]>(
+      `${NOTIFICATION_API_BASE_URL}/api/feedback`,
+      {
+        headers: this.withAuthHeaders(),
+      }
+    );
   }
 
   async updateAvatar(userId: number, avatar: string): Promise<UpdateAvatarResponse> {
