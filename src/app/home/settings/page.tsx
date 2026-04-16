@@ -24,6 +24,7 @@ import { apiService } from '@/services/api';
 
 export default function SettingsPage() {
   const [name, setName] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [mood, setMood] = useState<string>('happy');
@@ -65,8 +66,13 @@ export default function SettingsPage() {
       return;
     }
 
-    if (password && password.length < 3) {
-      setError('Password must be at least 3 characters long');
+    if (password && password.length < 6) {
+      setError('New password must be at least 6 characters long');
+      return;
+    }
+
+    if (password && !currentPassword.trim()) {
+      setError('Current password is required to change your password');
       return;
     }
 
@@ -79,12 +85,18 @@ export default function SettingsPage() {
 
     try {
       // Update user settings
-      const updateData: { name?: string; password?: string; mood?: string } = {};
+      const updateData: {
+        name?: string;
+        password?: string;
+        currentPassword?: string;
+        mood?: string;
+      } = {};
       if (name.trim()) {
         updateData.name = name.trim();
       }
       if (password) {
         updateData.password = password;
+        updateData.currentPassword = currentPassword;
       }
       if (mood) {
         updateData.mood = mood;
@@ -112,6 +124,7 @@ export default function SettingsPage() {
       }
 
       setSuccess(true);
+      setCurrentPassword('');
       setPassword('');
       setConfirmPassword('');
       
@@ -226,6 +239,31 @@ export default function SettingsPage() {
               <TextField
                 fullWidth
                 type="password"
+                label="Current Password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="Required when setting a new password"
+                InputProps={{
+                  startAdornment: (
+                    <Box sx={{ mr: 1, display: 'flex', alignItems: 'center', color: '#1e40af' }}>
+                      <LockIcon fontSize="small" />
+                    </Box>
+                  ),
+                }}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    '&:hover fieldset': {
+                      borderColor: '#bfdbfe',
+                    },
+                    '&.Mui-focused fieldset': {
+                      borderColor: '#1e40af',
+                    },
+                  },
+                }}
+              />
+              <TextField
+                fullWidth
+                type="password"
                 label="New Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -274,7 +312,7 @@ export default function SettingsPage() {
                 }}
               />
               <Typography variant="caption" sx={{ color: 'rgba(0, 0, 0, 0.6)', mt: -1 }}>
-                Leave blank if you don't want to change your password
+                Leave new password blank if you don&apos;t want to change it. Minimum 6 characters for a new password.
               </Typography>
             </Stack>
           </Box>

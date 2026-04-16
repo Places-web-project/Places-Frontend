@@ -31,8 +31,17 @@ interface Booking {
   id_room: number;
   start: string;
   end: string;
+  status?: string;
+  checkedInAt?: string | null;
   roomName?: string;
   roomType?: string;
+}
+
+interface AttendanceSummary {
+  totalEligibleBookings: number;
+  checkedInCount: number;
+  missedCheckinsCount: number;
+  isFlagged: boolean;
 }
 
 export default function HomePage() {
@@ -43,11 +52,14 @@ export default function HomePage() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
-  const [userType, setUserType] = useState<string | null>(null);
+  const [attendanceSummary, setAttendanceSummary] = useState<AttendanceSummary | null>(null);
+  const [checkInLoadingId, setCheckInLoadingId] = useState<number | null>(null);
+  const [checkInFeedback, setCheckInFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
     setMounted(true);
     loadBookings();
+    loadAttendanceSummary();
   }, []);
 
   useEffect(() => {
@@ -58,6 +70,7 @@ export default function HomePage() {
   }, []);
 
   const loadBookings = async () => {
+    setLoading(true);
     try {
       // Get logged-in user from localStorage
       const userStr = localStorage.getItem('user');
@@ -73,9 +86,6 @@ export default function HomePage() {
         setLoading(false);
         return;
       }
-
-      // Store user type for alert display
-      setUserType(user.type || null);
 
       // Get user bookings from backend (next 2 weeks)
       const userBookingsResponse = await apiService.getUserBookings(user.id);
@@ -96,16 +106,18 @@ export default function HomePage() {
           id_room: booking.id_room,
           start: startDateTime,
           end: endDateTime,
+          status: booking.status,
+          checkedInAt: booking.checked_in_at ?? null,
           roomName: roomData?.name || `Room ${booking.id_room}`,
           roomType: roomData?.type || 'desk',
         };
       });
 
-      // Filter only upcoming bookings (in case any are in the past)
+      // Keep upcoming and currently active bookings.
       const now = new Date();
       const upcoming = bookingsWithRoomInfo.filter((booking: Booking) => {
-        const bookingDate = new Date(booking.start);
-        return bookingDate >= now;
+        const bookingEnd = new Date(booking.end);
+        return bookingEnd >= now;
       });
 
       // Sort by date
@@ -118,6 +130,42 @@ export default function HomePage() {
       console.error('Failed to load bookings:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadAttendanceSummary = async () => {
+    try {
+      const summary = await apiService.getMyAttendanceSummary();
+      setAttendanceSummary(summary);
+    } catch (error) {
+      console.error('Failed to load attendance summary:', error);
+      setAttendanceSummary(null);
+    }
+  };
+
+  const canCheckIn = (booking: Booking) => {
+    if (booking.checkedInAt) return false;
+    if ((booking.status || '').toLowerCase() !== 'approved') return false;
+    const now = new Date();
+    const start = new Date(booking.start);
+    const end = new Date(booking.end);
+    return now >= start && now <= end;
+  };
+
+  const handleCheckIn = async (bookingId: number) => {
+    setCheckInLoadingId(bookingId);
+    setCheckInFeedback(null);
+    try {
+      await apiService.checkInBooking(bookingId);
+      await Promise.all([loadBookings(), loadAttendanceSummary()]);
+      setCheckInFeedback({ type: 'success', message: 'Check-in recorded successfully.' });
+    } catch (error) {
+      setCheckInFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Failed to check in',
+      });
+    } finally {
+      setCheckInLoadingId(null);
     }
   };
 
@@ -269,8 +317,13 @@ export default function HomePage() {
         </Typography>
       </Box>
 
-      {/* Alert for b_employee type */}
-      {userType === 'b_employee' && (
+      {checkInFeedback && (
+        <Alert severity={checkInFeedback.type} sx={{ mb: 3 }}>
+          {checkInFeedback.message}
+        </Alert>
+      )}
+
+      {attendanceSummary?.isFlagged && (
         <Alert
           severity="error"
           sx={{
@@ -287,7 +340,8 @@ export default function HomePage() {
             },
           }}
         >
-          In the last 30 days, you booked 10 times and attended only 1 time
+          In the last 30 days, you missed check-in for {attendanceSummary.missedCheckinsCount} of{' '}
+          {attendanceSummary.totalEligibleBookings} completed approved bookings.
         </Alert>
       )}
 
@@ -532,6 +586,37 @@ export default function HomePage() {
                           </Typography>
                         </Box>
                       </Stack>
+                      <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                        {booking.checkedInAt ? (
+                          <Chip
+                            label="Checked in"
+                            size="small"
+                            sx={{
+                              bgcolor: '#dcfce7',
+                              color: '#166534',
+                              fontWeight: 600,
+                            }}
+                          />
+                        ) : (
+                          <Button
+                            size="small"
+                            variant="contained"
+                            onClick={() => handleCheckIn(booking.id)}
+                            disabled={!canCheckIn(booking) || checkInLoadingId === booking.id}
+                            sx={{
+                              textTransform: 'none',
+                              bgcolor: '#1e40af',
+                              '&:hover': { bgcolor: '#1d4ed8' },
+                              '&.Mui-disabled': {
+                                bgcolor: '#bfdbfe',
+                                color: '#1e3a8a',
+                              },
+                            }}
+                          >
+                            {checkInLoadingId === booking.id ? 'Checking in...' : 'Check in'}
+                          </Button>
+                        )}
+                      </Box>
                     </CardContent>
                   </Card>
                   ))}

@@ -51,6 +51,14 @@ interface BookingApiModel {
   startsAt: string;
   endsAt: string;
   status: string;
+  checkedInAt?: string | null;
+}
+
+interface AttendanceSummaryApiModel {
+  totalEligibleBookings: number;
+  checkedInCount: number;
+  missedCheckinsCount: number;
+  isFlagged: boolean;
 }
 
 interface RoomApiModel {
@@ -94,6 +102,7 @@ interface LegacyBooking {
   end: string;
   status?: string;
   room_name?: string;
+  checked_in_at?: string | null;
 }
 
 interface LegacyUser {
@@ -281,6 +290,7 @@ class ApiService {
       end: ends.time,
       status: (booking.status || '').toLowerCase(),
       room_name: booking.roomName,
+      checked_in_at: booking.checkedInAt ?? null,
     };
   }
 
@@ -391,7 +401,7 @@ class ApiService {
   async getUserBookings(userId: number): Promise<{
     user_id: number;
     user_name: string;
-    bookings: Array<{ id: number; id_room: number; date: string; start: string; end: string }>;
+    bookings: Array<{ id: number; id_room: number; date: string; start: string; end: string; status?: string; checked_in_at?: string | null }>;
     bookings_count: number;
     period: { start_date: string; end_date: string };
   }> {
@@ -420,6 +430,8 @@ class ApiService {
         date: b.date,
         start: b.start,
         end: b.end,
+        status: b.status,
+        checked_in_at: b.checked_in_at ?? null,
       }));
 
     return {
@@ -496,7 +508,7 @@ class ApiService {
 
   async updateUserSettings(
     userId: number,
-    settings: { name?: string; password?: string; mood?: string }
+    settings: { name?: string; password?: string; currentPassword?: string; mood?: string }
   ): Promise<{ success: boolean; message: string; user: any }> {
     const current = this.getStoredUser();
     if (!current || current.id !== userId) {
@@ -504,7 +516,18 @@ class ApiService {
     }
 
     if (settings.password) {
-      throw new Error('Password change requires current password and is not supported by this screen yet.');
+      const currentPassword = settings.currentPassword?.trim();
+      if (!currentPassword) {
+        throw new Error('Current password is required to set a new password.');
+      }
+      await this.fetchWithErrorHandling<void>(`${AUTH_API_BASE_URL}/api/auth/me/password`, {
+        method: 'PUT',
+        headers: this.withAuthHeaders(),
+        body: JSON.stringify({
+          currentPassword,
+          newPassword: settings.password,
+        }),
+      });
     }
 
     const updatedUser = await this.updateMyProfile({
@@ -839,6 +862,26 @@ class ApiService {
       }
     );
     return { message: 'Booking rejected', booking: this.bookingToLegacy(updated) };
+  }
+
+  async checkInBooking(bookingId: number): Promise<{ message: string; booking: LegacyBooking }> {
+    const updated = await this.fetchWithErrorHandling<BookingApiModel>(
+      `${BOOKING_API_BASE_URL}/api/bookings/${bookingId}/check-in`,
+      {
+        method: 'PUT',
+        headers: this.withAuthHeaders(),
+      }
+    );
+    return { message: 'Booking checked in', booking: this.bookingToLegacy(updated) };
+  }
+
+  async getMyAttendanceSummary(): Promise<AttendanceSummaryApiModel> {
+    return this.fetchWithErrorHandling<AttendanceSummaryApiModel>(
+      `${BOOKING_API_BASE_URL}/api/bookings/me/attendance-summary`,
+      {
+        headers: this.withAuthHeaders(),
+      }
+    );
   }
 
   async getUsers(): Promise<{ message: string; users: LegacyUser[] }> {
