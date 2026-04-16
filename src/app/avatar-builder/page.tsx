@@ -59,6 +59,27 @@ interface AvatarConfig {
   clothesColor: string;
 }
 
+const svgToDataUrl = (svg: string): string => {
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+};
+
+const dataUrlToSvg = (value: string): string | null => {
+  if (!value.startsWith('data:image/svg+xml')) {
+    return null;
+  }
+
+  const encodedPayload = value.split(',', 2)[1];
+  if (!encodedPayload) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(encodedPayload);
+  } catch {
+    return null;
+  }
+};
+
 export default function AvatarBuilder() {
   const [avatarSvg, setAvatarSvg] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -152,8 +173,8 @@ export default function AvatarBuilder() {
         clothesColor,
       };
 
-      // Save avatar SVG to backend
-      const response = await apiService.updateAvatar(user.id, avatarSvg);
+      const avatarUrl = svgToDataUrl(avatarSvg);
+      const response = await apiService.updateAvatar(user.id, avatarUrl);
       
       if (response.success && response.user) {
         // Update user data in localStorage with new avatar
@@ -161,7 +182,7 @@ export default function AvatarBuilder() {
         
         // Also save config and SVG to localStorage for immediate use
         localStorage.setItem('userAvatar', JSON.stringify(avatarConfig));
-        localStorage.setItem('userAvatarSvg', avatarSvg);
+        localStorage.setItem('userAvatarSvg', avatarUrl);
         
         // Dispatch custom event to notify other components (like navbar) that avatar was updated
         window.dispatchEvent(new Event('avatarUpdated'));
@@ -210,7 +231,12 @@ export default function AvatarBuilder() {
       try {
         const user = JSON.parse(userStr);
         if (user.avatar && user.avatar.trim()) {
-          avatarSvgToLoad = user.avatar;
+          const decodedAvatar = dataUrlToSvg(user.avatar);
+          if (decodedAvatar) {
+            avatarSvgToLoad = decodedAvatar;
+          } else if (user.avatar.trim().startsWith('<svg')) {
+            avatarSvgToLoad = user.avatar;
+          }
         }
       } catch (error) {
         console.error('Failed to parse user data:', error);
@@ -221,7 +247,12 @@ export default function AvatarBuilder() {
     if (!avatarSvgToLoad) {
       const savedSvg = localStorage.getItem('userAvatarSvg');
       if (savedSvg) {
-        avatarSvgToLoad = savedSvg;
+        const decodedSavedSvg = dataUrlToSvg(savedSvg);
+        if (decodedSavedSvg) {
+          avatarSvgToLoad = decodedSavedSvg;
+        } else if (savedSvg.trim().startsWith('<svg')) {
+          avatarSvgToLoad = savedSvg;
+        }
       }
     }
     

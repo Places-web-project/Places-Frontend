@@ -184,11 +184,9 @@ export default function BookingModal({ desk, onClose, onBook, defaultDate }: Boo
                   height: '100%',
                 },
               }}
+              src={desk.bookedByAvatar || undefined}
             >
-              <Box
-                dangerouslySetInnerHTML={{ __html: desk.bookedByAvatar }}
-                sx={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              />
+              {!desk.bookedByAvatar && desk.bookedBy?.charAt(0).toUpperCase()}
             </Avatar>
           )}
           <Typography variant="h5" fontWeight="bold">

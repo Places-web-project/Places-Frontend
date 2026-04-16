@@ -165,13 +165,9 @@ export default function ApprovalsPage() {
                           bgcolor: booking.user?.avatar ? 'transparent' : '#1e40af',
                           border: '2px solid #bfdbfe',
                         }}
+                        src={booking.user?.avatar || undefined}
                       >
-                        {booking.user?.avatar ? (
-                          <Box
-                            dangerouslySetInnerHTML={{ __html: booking.user.avatar }}
-                            sx={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                          />
-                        ) : (
+                        {!booking.user?.avatar && (
                           <PersonIcon sx={{ fontSize: 28, color: '#FFFFFF' }} />
                         )}
                       </Avatar>

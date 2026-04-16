@@ -503,13 +503,9 @@ export default function BookingGridPage() {
                                 height: '100%',
                               },
                             }}
+                            src={user.avatar || undefined}
                           >
-                            {user.avatar ? (
-                              <Box
-                                dangerouslySetInnerHTML={{ __html: user.avatar }}
-                                sx={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                              />
-                            ) : (
+                            {!user.avatar && (
                               <Typography variant="body2" sx={{ color: '#FFFFFF', fontWeight: 'bold' }}>
                                 {user.name
                                   .split(' ')

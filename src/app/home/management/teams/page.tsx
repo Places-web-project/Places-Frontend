@@ -355,13 +355,9 @@ export default function TeamManagementPage() {
                           mr: 2,
                           bgcolor: member.user.avatar ? 'transparent' : '#1e40af',
                         }}
+                        src={member.user.avatar || undefined}
                       >
-                        {member.user.avatar ? (
-                          <Box
-                            dangerouslySetInnerHTML={{ __html: member.user.avatar }}
-                            sx={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                          />
-                        ) : (
+                        {!member.user.avatar && (
                           <PersonIcon sx={{ fontSize: 20, color: '#FFFFFF' }} />
                         )}
                       </Avatar>

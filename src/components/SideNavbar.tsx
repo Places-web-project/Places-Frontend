@@ -48,7 +48,7 @@ export default function SideNavbar({ children }: SideNavbarProps) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [mounted, setMounted] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [avatarSvg, setAvatarSvg] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [personalSpacesOpen, setPersonalSpacesOpen] = useState(
     pathname?.includes('/home/bookings') || 
     pathname === '/home' || 
@@ -89,12 +89,12 @@ export default function SideNavbar({ children }: SideNavbarProps) {
         
         // Load avatar from user object first (from login/backend)
         if (user.avatar && user.avatar.trim()) {
-          setAvatarSvg(user.avatar);
+          setAvatarUrl(user.avatar);
         } else {
           // Fall back to userAvatarSvg if user object doesn't have avatar
           const savedAvatar = localStorage.getItem('userAvatarSvg');
           if (savedAvatar) {
-            setAvatarSvg(savedAvatar);
+            setAvatarUrl(savedAvatar);
           }
         }
         
@@ -106,14 +106,14 @@ export default function SideNavbar({ children }: SideNavbarProps) {
       // If no user object, try userAvatarSvg as fallback
       const savedAvatar = localStorage.getItem('userAvatarSvg');
       if (savedAvatar) {
-        setAvatarSvg(savedAvatar);
+        setAvatarUrl(savedAvatar);
       }
     }
     
     // Listen for storage changes to update avatar when saved
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'userAvatarSvg' && e.newValue) {
-        setAvatarSvg(e.newValue);
+        setAvatarUrl(e.newValue);
       }
       if (e.key === 'user' && e.newValue) {
         try {
@@ -121,7 +121,7 @@ export default function SideNavbar({ children }: SideNavbarProps) {
           setUserType(user.type || null);
           // Update avatar from user object
           if (user.avatar && user.avatar.trim()) {
-            setAvatarSvg(user.avatar);
+            setAvatarUrl(user.avatar);
           }
         } catch (error) {
           console.error('Failed to parse user data:', error);
@@ -139,11 +139,11 @@ export default function SideNavbar({ children }: SideNavbarProps) {
           const user = JSON.parse(userStr);
           setUserType(user.type || null);
           if (user.avatar && user.avatar.trim()) {
-            setAvatarSvg(user.avatar);
+            setAvatarUrl(user.avatar);
           } else {
             const savedAvatar = localStorage.getItem('userAvatarSvg');
             if (savedAvatar) {
-              setAvatarSvg(savedAvatar);
+              setAvatarUrl(savedAvatar);
             }
           }
         } catch (error) {
@@ -152,7 +152,7 @@ export default function SideNavbar({ children }: SideNavbarProps) {
       } else {
         const savedAvatar = localStorage.getItem('userAvatarSvg');
         if (savedAvatar) {
-          setAvatarSvg(savedAvatar);
+          setAvatarUrl(savedAvatar);
         }
       }
     };
@@ -167,12 +167,12 @@ export default function SideNavbar({ children }: SideNavbarProps) {
           setUserType(user.type || null);
           // Update avatar from user object when user data is updated (e.g., after login)
           if (user.avatar && user.avatar.trim()) {
-            setAvatarSvg(user.avatar);
+            setAvatarUrl(user.avatar);
           } else {
             // Fallback to userAvatarSvg if user object doesn't have avatar
             const savedAvatar = localStorage.getItem('userAvatarSvg');
             if (savedAvatar) {
-              setAvatarSvg(savedAvatar);
+              setAvatarUrl(savedAvatar);
             }
           }
         } catch (error) {
@@ -322,20 +322,16 @@ export default function SideNavbar({ children }: SideNavbarProps) {
                 sx={{ 
                   width: 32, 
                   height: 32, 
-                  bgcolor: avatarSvg ? 'transparent' : '#1e40af', 
+                  bgcolor: avatarUrl ? 'transparent' : '#1e40af', 
                   border: '2px solid #bfdbfe',
                   '& img': {
                     width: '100%',
                     height: '100%',
                   },
                 }}
+                src={avatarUrl || undefined}
               >
-                {avatarSvg ? (
-                  <Box
-                    dangerouslySetInnerHTML={{ __html: avatarSvg }}
-                    sx={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  />
-                ) : (
+                {!avatarUrl && (
                   <PersonIcon fontSize="small" sx={{ color: '#FFFFFF' }} />
                 )}
               </Avatar>

@@ -312,13 +312,9 @@ export default function DeskMarker({ desk, onClick, isAdminMode = false, mapScal
                     height: '100%',
                   },
                 }}
+                src={desk.bookedByAvatar || undefined}
               >
-                {desk.bookedByAvatar ? (
-                  <Box
-                    dangerouslySetInnerHTML={{ __html: desk.bookedByAvatar }}
-                    sx={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  />
-                ) : (
+                {!desk.bookedByAvatar && (
                   <PersonIcon sx={{ fontSize: 20, color: '#FFFFFF' }} />
                 )}
               </Avatar>

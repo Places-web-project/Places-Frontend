@@ -350,8 +350,15 @@ export default function RecreationalChat({
                         border: '1px solid #e0e0e0',
                         color: '#fff',
                       }}
+                      src={
+                        message.user.avatar &&
+                        message.user.avatar.trim() &&
+                        !message.user.avatar.trim().startsWith('<svg')
+                          ? message.user.avatar
+                          : undefined
+                      }
                     >
-                      {message.user.avatar && message.user.avatar.trim() ? (
+                      {message.user.avatar && message.user.avatar.trim().startsWith('<svg') ? (
                         <Box
                           dangerouslySetInnerHTML={{
                             __html: message.user.avatar,
@@ -368,10 +375,10 @@ export default function RecreationalChat({
                             },
                           }}
                         />
-                      ) : (
+                      ) : !message.user.avatar || !message.user.avatar.trim() ? (
                         // Fallback to initials if no avatar
                         message.user.name.charAt(0).toUpperCase()
-                      )}
+                      ) : null}
                     </Avatar>
                   )}
                   <Paper

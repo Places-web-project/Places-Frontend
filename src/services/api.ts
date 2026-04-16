@@ -20,6 +20,8 @@ interface AuthUserView {
   username: string;
   email: string;
   roles: string[];
+  avatarUrl?: string | null;
+  mood?: string | null;
 }
 
 interface LoginApiResponse {
@@ -100,6 +102,7 @@ interface LegacyUser {
   avatar: string;
   type: string;
   email?: string;
+  mood?: string;
 }
 
 interface TeamWithMembers {
@@ -206,9 +209,10 @@ class ApiService {
     return {
       id: user.id,
       name: user.username,
-      avatar: '',
+      avatar: user.avatarUrl || '',
       type: this.roleToUserType(user.roles),
       email: user.email,
+      mood: user.mood || 'happy',
     };
   }
 
@@ -476,6 +480,20 @@ class ApiService {
     };
   }
 
+  private async updateMyProfile(payload: { username?: string; avatarUrl?: string | null; mood?: string | null }): Promise<LegacyUser> {
+    const response = await this.fetchWithErrorHandling<AuthUserView>(
+      `${AUTH_API_BASE_URL}/api/auth/me/profile`,
+      {
+        method: 'PATCH',
+        headers: this.withAuthHeaders(),
+        body: JSON.stringify(payload),
+      }
+    );
+    const mappedUser = this.toLegacyUser(response);
+    this.storeUser(mappedUser);
+    return mappedUser;
+  }
+
   async updateUserSettings(
     userId: number,
     settings: { name?: string; password?: string; mood?: string }
@@ -489,17 +507,14 @@ class ApiService {
       throw new Error('Password change requires current password and is not supported by this screen yet.');
     }
 
-    const updatedUser = {
-      ...current,
-      name: settings.name ?? current.name,
-      mood: settings.mood ?? (current as any).mood,
-    };
-
-    this.storeUser(updatedUser as LegacyUser);
+    const updatedUser = await this.updateMyProfile({
+      username: settings.name ?? current.name,
+      mood: settings.mood ?? current.mood ?? 'happy',
+    });
 
     return {
       success: true,
-      message: 'Settings updated locally',
+      message: 'Settings updated',
       user: updatedUser,
     };
   }
@@ -923,18 +938,18 @@ class ApiService {
     );
   }
 
-  async updateAvatar(userId: number, avatar: string): Promise<UpdateAvatarResponse> {
+  async updateAvatar(userId: number, avatarUrl: string): Promise<UpdateAvatarResponse> {
     const current = this.getStoredUser();
     if (!current || current.id !== userId) {
       throw new Error('User not found in local session');
     }
-
-    const updated = { ...current, avatar };
-    this.storeUser(updated);
+    const updated = await this.updateMyProfile({
+      avatarUrl,
+    });
 
     return {
       success: true,
-      message: 'Avatar updated locally',
+      message: 'Avatar updated',
       user: updated,
     };
   }

@@ -42,7 +42,11 @@ export default function LoginPage() {
         localStorage.setItem('isAuthenticated', 'true');
         
         // Also store avatar in userAvatarSvg for backward compatibility
-        if (response.user.avatar && response.user.avatar.trim()) {
+        if (
+          response.user.avatar &&
+          response.user.avatar.trim() &&
+          response.user.avatar.startsWith('data:image/svg+xml')
+        ) {
           localStorage.setItem('userAvatarSvg', response.user.avatar);
         }
         
