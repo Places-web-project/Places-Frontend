@@ -262,18 +262,19 @@ function BookingPageContent() {
       );
 
       const createResponse = await apiService.createBooking(bookingData);
-      
-      // Show message if booking is pending approval
+
+      // Meeting rooms / shared spaces may be PENDING until a manager approves; desks are APPROVED immediately.
       if (createResponse.status === 'pending') {
         setSnackbar({
           open: true,
-          message: 'Your booking request has been submitted and is pending manager approval. You will be notified once it is approved.',
+          message:
+            'Your booking request for this room is pending manager approval. You will be notified once it is approved.',
           severity: 'info',
         });
       } else {
         setSnackbar({
           open: true,
-          message: 'Booking created successfully!',
+          message: 'Your booking is confirmed.',
           severity: 'success',
         });
       }

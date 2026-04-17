@@ -61,11 +61,45 @@ interface AttendanceSummaryApiModel {
   isFlagged: boolean;
 }
 
+export interface LoyaltyEarningRule {
+  label: string;
+  points: number;
+  description: string;
+  implemented: boolean;
+}
+
+export interface LoyaltyMeResponse {
+  balance: number;
+  nextMilestone: number;
+  attendanceRank: number;
+  rankPoolSize: number;
+  isTopThree: boolean;
+  earningRules: LoyaltyEarningRule[];
+}
+
+export interface LoyaltyRewardResponse {
+  id: number;
+  name: string;
+  description: string;
+  pointsCost: number;
+  category: string;
+  stockRemaining: number;
+  iconKey: string;
+  active: boolean;
+}
+
+export interface LoyaltyRedeemResponse {
+  balanceAfter: number;
+  message: string;
+}
+
 interface RoomApiModel {
   id: number;
   name: string;
   capacity: number;
   roomType: string;
+  positionX?: number | null;
+  positionY?: number | null;
 }
 
 interface DeskApiModel {
@@ -284,8 +318,15 @@ class ApiService {
     const colCount = 12;
     const row = Math.floor(index / colCount);
     const col = index % colCount;
-    const x = 6 + col * 7.5;
-    const y = 8 + row * 8;
+    const fallbackX = 6 + col * 7.5;
+    const fallbackY = 8 + row * 8;
+    const hasMapPosition =
+      room.positionX != null &&
+      room.positionY != null &&
+      !Number.isNaN(room.positionX) &&
+      !Number.isNaN(room.positionY);
+    const x = hasMapPosition ? room.positionX! : fallbackX;
+    const y = hasMapPosition ? room.positionY! : fallbackY;
     const type = this.mapRoomType(room.roomType);
 
     const asDesk: Desk = {
@@ -422,6 +463,69 @@ class ApiService {
     return {
       message: 'List of bookings',
       bookings: paged.content.map((b) => this.bookingToLegacy(b)),
+    };
+  }
+
+  /** Fetches every page of bookings (for analytics). Caps at 200k rows as a safeguard. */
+  async getAllBookings(): Promise<{ message: string; bookings: LegacyBooking[] }> {
+    const pageSize = 500;
+    const maxPages = 400;
+    const all: LegacyBooking[] = [];
+    let page = 0;
+    let last = false;
+
+    do {
+      const paged = await this.fetchWithErrorHandling<PagedResponse<BookingApiModel>>(
+        `${BOOKING_API_BASE_URL}/api/bookings?page=${page}&size=${pageSize}`,
+        {
+          headers: this.withAuthHeaders(),
+        }
+      );
+      all.push(...paged.content.map((b) => this.bookingToLegacy(b)));
+      last = Boolean(paged.last);
+      page += 1;
+      if (page >= maxPages) {
+        break;
+      }
+    } while (!last);
+
+    return {
+      message: 'List of bookings',
+      bookings: all,
+    };
+  }
+
+  /** Fetches every page of rooms (floor plan may exceed one page). */
+  async getAllRooms(): Promise<{ message: string; rooms: LegacyRoom[] }> {
+    const pageSize = 300;
+    const maxPages = 20;
+    const allLegacy: LegacyRoom[] = [];
+    let page = 0;
+    let last = false;
+    let globalIndex = 0;
+
+    do {
+      const paged = await this.fetchWithErrorHandling<PagedResponse<RoomApiModel>>(
+        `${BOOKING_API_BASE_URL}/api/rooms?page=${page}&size=${pageSize}&sortBy=name`,
+        {
+          headers: this.withAuthHeaders(),
+        }
+      );
+      for (const room of paged.content) {
+        allLegacy.push(this.roomToLegacyRoom(room, globalIndex));
+        globalIndex += 1;
+      }
+      last = Boolean(paged.last);
+      page += 1;
+      if (page >= maxPages) {
+        break;
+      }
+    } while (!last);
+
+    this.roomsCache = allLegacy;
+    return {
+      message: 'List of rooms',
+      rooms: allLegacy,
     };
   }
 
@@ -906,6 +1010,31 @@ class ApiService {
     return this.fetchWithErrorHandling<AttendanceSummaryApiModel>(
       `${BOOKING_API_BASE_URL}/api/bookings/me/attendance-summary`,
       {
+        headers: this.withAuthHeaders(),
+      }
+    );
+  }
+
+  async getLoyaltyMe(): Promise<LoyaltyMeResponse> {
+    return this.fetchWithErrorHandling<LoyaltyMeResponse>(`${BOOKING_API_BASE_URL}/api/loyalty/me`, {
+      headers: this.withAuthHeaders(),
+    });
+  }
+
+  async getLoyaltyRewards(): Promise<LoyaltyRewardResponse[]> {
+    return this.fetchWithErrorHandling<LoyaltyRewardResponse[]>(
+      `${BOOKING_API_BASE_URL}/api/loyalty/rewards`,
+      {
+        headers: this.withAuthHeaders(),
+      }
+    );
+  }
+
+  async redeemLoyaltyReward(rewardId: number): Promise<LoyaltyRedeemResponse> {
+    return this.fetchWithErrorHandling<LoyaltyRedeemResponse>(
+      `${BOOKING_API_BASE_URL}/api/loyalty/rewards/${rewardId}/redeem`,
+      {
+        method: 'POST',
         headers: this.withAuthHeaders(),
       }
     );

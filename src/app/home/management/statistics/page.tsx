@@ -34,6 +34,7 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import MeetingRoomIcon from '@mui/icons-material/MeetingRoom';
 import SearchIcon from '@mui/icons-material/Search';
 import DownloadIcon from '@mui/icons-material/Download';
+import { apiService } from '@/services/api';
 
 interface User {
   id: number;
@@ -64,266 +65,39 @@ interface DeskUtilization {
   utilizationRate: number;
 }
 
-// Seeded random number generator for consistent data
-class SeededRandom {
-  private seed: number;
+interface LegacyBookingRow {
+  id: number;
+  id_room: number;
+  id_user: number;
+  date: string;
+  start: string;
+  end: string;
+  status?: string;
+  room_name?: string;
+}
 
-  constructor(seed: number) {
-    this.seed = seed;
-  }
+function toYmd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
-  next(): number {
-    this.seed = (this.seed * 9301 + 49297) % 233280;
-    return this.seed / 233280;
+function spaceNameFromRoomData(data: string, id: number): string {
+  try {
+    const parsed = JSON.parse(data) as { name?: string };
+    const n = parsed.name?.trim();
+    return n || `Space ${id}`;
+  } catch {
+    return `Space ${id}`;
   }
 }
 
-// Generate large employee list (250 employees for 216 desks - realistic office scenario)
-const generateEmployeeList = (): User[] => {
-  const firstNames = [
-    'John', 'Sarah', 'Michael', 'Emily', 'David', 'Lisa', 'James', 'Maria', 'Robert', 'Jennifer',
-    'Christopher', 'Amanda', 'Daniel', 'Jessica', 'Matthew', 'Ashley', 'Andrew', 'Michelle', 'Joshua', 'Nicole',
-    'Ryan', 'Stephanie', 'Kevin', 'Melissa', 'Brian', 'Kimberly', 'Jason', 'Amy', 'Justin', 'Angela',
-    'William', 'Rebecca', 'Jonathan', 'Laura', 'Eric', 'Sharon', 'Steven', 'Cynthia', 'Mark', 'Kathleen',
-    'Anthony', 'Samantha', 'Thomas', 'Deborah', 'Charles', 'Rachel', 'Joseph', 'Carolyn', 'Daniel', 'Janet',
-    'Paul', 'Catherine', 'Kenneth', 'Maria', 'Gregory', 'Frances', 'Ronald', 'Christine', 'Timothy', 'Sandra',
-    'Jose', 'Donna', 'Larry', 'Carol', 'Jeffrey', 'Ruth', 'Frank', 'Sharon', 'Scott', 'Michelle',
-    'Eric', 'Laura', 'Stephen', 'Sarah', 'Andrew', 'Kimberly', 'Raymond', 'Deborah', 'Gregory', 'Lisa',
-    'Samuel', 'Nancy', 'Patrick', 'Karen', 'Alexander', 'Betty', 'Jack', 'Helen', 'Dennis', 'Sandra',
-    'Jerry', 'Donna', 'Tyler', 'Carol', 'Aaron', 'Ruth', 'Jose', 'Sharon', 'Adam', 'Michelle',
-    'Henry', 'Laura', 'Douglas', 'Sarah', 'Nathan', 'Kimberly', 'Zachary', 'Deborah', 'Peter', 'Lisa',
-    'Kyle', 'Nancy', 'Noah', 'Karen', 'Ethan', 'Betty', 'Jeremy', 'Helen', 'Walter', 'Sandra',
-    'Alan', 'Donna', 'Juan', 'Carol', 'Wayne', 'Ruth', 'Roy', 'Sharon', 'Ralph', 'Michelle',
-    'Eugene', 'Laura', 'Louis', 'Sarah', 'Philip', 'Kimberly', 'Bobby', 'Deborah', 'Johnny', 'Lisa',
-    'Terry', 'Nancy', 'Lawrence', 'Karen', 'Sean', 'Betty', 'Christian', 'Helen', 'Jesse', 'Sandra',
-    'Austin', 'Donna', 'Gerald', 'Carol', 'Carlos', 'Ruth', 'Roger', 'Sharon', 'Keith', 'Michelle',
-    'Arthur', 'Laura', 'Dylan', 'Sarah', 'Harold', 'Kimberly', 'Jordan', 'Deborah', 'Bryan', 'Lisa',
-    'Albert', 'Nancy', 'Joe', 'Karen', 'Willie', 'Betty', 'Gabriel', 'Helen', 'Logan', 'Sandra',
-    'Randy', 'Donna', 'Howard', 'Carol', 'Ethan', 'Ruth', 'Vincent', 'Sharon', 'Bruce', 'Michelle',
-    'Elijah', 'Laura', 'Dylan', 'Sarah', 'Alan', 'Kimberly', 'Juan', 'Deborah', 'Wayne', 'Lisa',
-    'Roy', 'Nancy', 'Ralph', 'Karen', 'Eugene', 'Betty', 'Louis', 'Helen', 'Philip', 'Sandra',
-    'Bobby', 'Donna', 'Johnny', 'Carol', 'Terry', 'Ruth', 'Lawrence', 'Sharon', 'Sean', 'Michelle',
-    'Christian', 'Laura', 'Jesse', 'Sarah', 'Austin', 'Kimberly', 'Gerald', 'Deborah', 'Carlos', 'Lisa',
-    'Roger', 'Nancy', 'Keith', 'Karen', 'Arthur', 'Betty', 'Dylan', 'Helen', 'Harold', 'Sandra',
-    'Jordan', 'Donna', 'Bryan', 'Carol', 'Albert', 'Ruth', 'Joe', 'Sharon', 'Willie', 'Michelle',
-    'Gabriel', 'Laura', 'Logan', 'Sarah', 'Randy', 'Kimberly', 'Howard', 'Deborah', 'Ethan', 'Lisa',
-    'Vincent', 'Nancy', 'Bruce', 'Karen', 'Elijah', 'Betty', 'Dylan', 'Helen', 'Alan', 'Sandra',
-  ];
+/** Bookings are often seeded with future dates only; cap must include upcoming reservations. */
+const UPCOMING_HORIZON_DAYS = 120;
 
-  const lastNames = [
-    'Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Rodriguez', 'Martinez',
-    'Hernandez', 'Lopez', 'Wilson', 'Anderson', 'Thomas', 'Taylor', 'Moore', 'Jackson', 'Martin', 'Lee',
-    'Thompson', 'White', 'Harris', 'Sanchez', 'Clark', 'Ramirez', 'Lewis', 'Robinson', 'Walker', 'Young',
-    'Allen', 'King', 'Wright', 'Scott', 'Torres', 'Nguyen', 'Hill', 'Flores', 'Green', 'Adams',
-    'Nelson', 'Baker', 'Hall', 'Rivera', 'Campbell', 'Mitchell', 'Carter', 'Roberts', 'Gomez', 'Phillips',
-    'Evans', 'Turner', 'Diaz', 'Parker', 'Cruz', 'Edwards', 'Collins', 'Reyes', 'Stewart', 'Morris',
-    'Rogers', 'Reed', 'Cook', 'Morgan', 'Bell', 'Murphy', 'Bailey', 'Rivera', 'Cooper', 'Richardson',
-    'Cox', 'Howard', 'Ward', 'Torres', 'Peterson', 'Gray', 'Ramirez', 'James', 'Watson', 'Brooks',
-    'Kelly', 'Sanders', 'Price', 'Bennett', 'Wood', 'Barnes', 'Ross', 'Henderson', 'Coleman', 'Jenkins',
-    'Perry', 'Powell', 'Long', 'Patterson', 'Hughes', 'Flores', 'Washington', 'Butler', 'Simmons', 'Foster',
-    'Gonzales', 'Bryant', 'Alexander', 'Russell', 'Griffin', 'Diaz', 'Hayes', 'Myers', 'Ford', 'Hamilton',
-    'Graham', 'Sullivan', 'Wallace', 'Woods', 'Cole', 'West', 'Jordan', 'Owens', 'Reynolds', 'Fisher',
-    'Ellis', 'Harrison', 'Gibson', 'Mcdonald', 'Cruz', 'Marshall', 'Ortiz', 'Gomez', 'Murray', 'Freeman',
-    'Wells', 'Webb', 'Simpson', 'Stevens', 'Tucker', 'Porter', 'Hunter', 'Hicks', 'Crawford', 'Henry',
-    'Boyd', 'Mason', 'Morales', 'Kennedy', 'Warren', 'Dixon', 'Ramos', 'Reyes', 'Burns', 'Gordon',
-    'Shaw', 'Holmes', 'Rice', 'Robertson', 'Hunt', 'Black', 'Daniels', 'Palmer', 'Mills', 'Nichols',
-    'Grant', 'Knight', 'Ferguson', 'Rose', 'Stone', 'Hawkins', 'Dunn', 'Perkins', 'Hudson', 'Spencer',
-    'Gardner', 'Stephens', 'Payne', 'Pierce', 'Berry', 'Matthews', 'Arnold', 'Wagner', 'Willis', 'Ray',
-    'Watkins', 'Olson', 'Carroll', 'Duncan', 'Snyder', 'Hart', 'Cunningham', 'Bradley', 'Lane', 'Andrews',
-  ];
-
-  const users: User[] = [];
-  const totalEmployees = 250;
-  const managerCount = 15;
-  const adminCount = 5;
-
-  for (let i = 1; i <= totalEmployees; i++) {
-    const firstName = firstNames[(i - 1) % firstNames.length];
-    const lastName = lastNames[Math.floor((i - 1) / firstNames.length) % lastNames.length];
-    
-    let type: string;
-    if (i <= adminCount) {
-      type = 'ADMIN';
-    } else if (i <= adminCount + managerCount) {
-      type = 'MANAGER';
-    } else {
-      type = 'EMPLOYEE';
-    }
-
-    users.push({
-      id: i,
-      name: `${firstName} ${lastName}`,
-      avatar: '',
-      type: type,
-    });
-  }
-
-  return users;
-};
-
-// Mock data generator with realistic patterns for 216 desks and 250+ employees
-const generateMockData = (dateRange: 'week' | 'month' | 'all') => {
-  const mockUsers = generateEmployeeList();
-  
-  // Use seeded random for consistent data (fixed seed: 12345)
-  const rng = new SeededRandom(12345);
-
-  // User booking frequency - realistic office patterns
-  // With 250 employees and 216 desks, not everyone can book every day
-  const userFrequency = new Map<number, number>();
-  mockUsers.forEach((user) => {
-    // Managers and admins come to office more (60-80% of days)
-    // Regular employees come less (20-50% of days) - hybrid work model
-    if (user.type === 'ADMIN') {
-      userFrequency.set(user.id, 0.75 + rng.next() * 0.1); // 75-85%
-    } else if (user.type === 'MANAGER') {
-      userFrequency.set(user.id, 0.60 + rng.next() * 0.15); // 60-75%
-    } else {
-      userFrequency.set(user.id, 0.20 + rng.next() * 0.30); // 20-50%
-    }
-  });
-
-  const today = new Date();
-  const mockBookings: any[] = [];
-  const TOTAL_DESKS = 216;
-  let daysBack = 0;
-  
-  if (dateRange === 'week') {
-    daysBack = 7;
-  } else if (dateRange === 'month') {
-    daysBack = 30;
-  } else {
-    daysBack = 90; // 3 months for "all time"
-  }
-
-  // Popular desk zones (windows, corners, etc.) - desks 1-50, 100-150, 200-216
-  const popularDeskZones = [
-    ...Array.from({ length: 50 }, (_, i) => i + 1),   // First 50 desks
-    ...Array.from({ length: 51 }, (_, i) => i + 100), // Desks 100-150
-    ...Array.from({ length: 17 }, (_, i) => i + 200), // Desks 200-216
-  ];
-
-  // Generate bookings for each day
-  for (let i = 0; i < daysBack; i++) {
-    const date = new Date(today);
-    date.setDate(today.getDate() - i);
-    const dateStr = date.toISOString().split('T')[0];
-    
-    // Skip weekends
-    if (date.getDay() === 0 || date.getDay() === 6) continue;
-    
-    // Fewer bookings in the past, more recent (simulate growth trend)
-    const recencyFactor = 1 - (i / daysBack) * 0.2; // 80-100% of max
-    
-    // Monday/Friday fewer bookings (remote work days)
-    const dayOfWeek = date.getDay();
-    const dayFactor = (dayOfWeek === 1 || dayOfWeek === 5) ? 0.65 : 1.0; // Mon/Fri 65% capacity
-    
-    // Target: 60-85% desk utilization on weekdays, 40-55% on Mon/Fri
-    const targetUtilization = dayFactor === 0.65 ? 0.45 + rng.next() * 0.1 : 0.70 + rng.next() * 0.15;
-    const targetBookings = Math.floor(TOTAL_DESKS * targetUtilization * recencyFactor);
-    
-    // Track which desks are booked today to avoid double-booking
-    const bookedDesks = new Set<number>();
-    let bookingsToday = 0;
-    
-    // Shuffle users deterministically using seeded random
-    const shuffledUsers = [...mockUsers].sort(() => rng.next() - 0.5);
-    
-    // Generate bookings until we reach target or run out of desks
-    for (const user of shuffledUsers) {
-      if (bookingsToday >= targetBookings) break;
-      
-      const frequency = userFrequency.get(user.id) || 0.35;
-      if (rng.next() < frequency * dayFactor) {
-        // Try to find an available desk
-        let deskId: number;
-        let attempts = 0;
-        
-        // 70% chance to prefer popular zones, 30% random
-        if (rng.next() < 0.7 && popularDeskZones.length > 0) {
-          const availablePopular = popularDeskZones.filter(d => !bookedDesks.has(d));
-          if (availablePopular.length > 0) {
-            deskId = availablePopular[Math.floor(rng.next() * availablePopular.length)];
-          } else {
-            // All popular desks taken, use any available
-            deskId = Math.floor(rng.next() * TOTAL_DESKS) + 1;
-            while (bookedDesks.has(deskId) && attempts < 10) {
-              deskId = Math.floor(rng.next() * TOTAL_DESKS) + 1;
-              attempts++;
-            }
-          }
-        } else {
-          deskId = Math.floor(rng.next() * TOTAL_DESKS) + 1;
-          while (bookedDesks.has(deskId) && attempts < 10) {
-            deskId = Math.floor(rng.next() * TOTAL_DESKS) + 1;
-            attempts++;
-          }
-        }
-        
-        // Only add if desk is available
-        if (!bookedDesks.has(deskId)) {
-          bookedDesks.add(deskId);
-          bookingsToday++;
-          
-          mockBookings.push({
-            id: mockBookings.length + 1,
-            id_room: deskId,
-            id_user: user.id,
-            date: dateStr,
-            start: '09:00',
-            end: '18:00',
-          });
-        }
-      }
-    }
-  }
-
-  // Add future bookings for "upcoming" stats (next 7 days)
-  for (let i = 1; i <= 7; i++) {
-    const futureDate = new Date(today);
-    futureDate.setDate(today.getDate() + i);
-    
-    // Skip weekends
-    if (futureDate.getDay() === 0 || futureDate.getDay() === 6) continue;
-    
-    const dateStr = futureDate.toISOString().split('T')[0];
-    const dayOfWeek = futureDate.getDay();
-    const dayFactor = (dayOfWeek === 1 || dayOfWeek === 5) ? 0.65 : 1.0;
-    const targetBookings = Math.floor(TOTAL_DESKS * (0.60 + rng.next() * 0.20) * dayFactor);
-    
-    const bookedDesks = new Set<number>();
-    const shuffledUsers = [...mockUsers].sort(() => rng.next() - 0.5);
-    
-    for (const user of shuffledUsers) {
-      if (bookedDesks.size >= targetBookings) break;
-      
-      const frequency = userFrequency.get(user.id) || 0.35;
-      if (rng.next() < frequency * dayFactor) {
-        let deskId = Math.floor(rng.next() * TOTAL_DESKS) + 1;
-        let attempts = 0;
-        while (bookedDesks.has(deskId) && attempts < 10) {
-          deskId = Math.floor(rng.next() * TOTAL_DESKS) + 1;
-          attempts++;
-        }
-        
-        if (!bookedDesks.has(deskId)) {
-          bookedDesks.add(deskId);
-          mockBookings.push({
-            id: mockBookings.length + 1,
-            id_room: deskId,
-            id_user: user.id,
-            date: dateStr,
-            start: '09:00',
-            end: '18:00',
-          });
-        }
-      }
-    }
-  }
-
-  return { mockUsers, mockBookings };
-};
+function addCalendarDays(base: Date, days: number): Date {
+  const d = new Date(base);
+  d.setDate(d.getDate() + days);
+  return d;
+}
 
 export default function OfficeStatisticsPage() {
   const [loading, setLoading] = useState(true);
@@ -339,6 +113,7 @@ export default function OfficeStatisticsPage() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [userTablePage, setUserTablePage] = useState(0);
   const [userTableRowsPerPage, setUserTableRowsPerPage] = useState(10);
+  const [spaceCount, setSpaceCount] = useState(0);
 
   useEffect(() => {
     loadStatistics();
@@ -359,41 +134,55 @@ export default function OfficeStatisticsPage() {
     setErrorMessage('');
 
     try {
-      // Always use mock data for realistic office scenario (250 employees, 216 desks)
-      const { mockUsers, mockBookings } = generateMockData(dateRange);
-      const allUsers = mockUsers;
-      const allBookings = mockBookings;
-      setUsers(allUsers);
+      const [bookingsRes, usersRes, roomsRes] = await Promise.all([
+        apiService.getAllBookings(),
+        apiService.getUsers(),
+        apiService.getAllRooms(),
+      ]);
 
-      // Calculate date range
-      const today = new Date();
-      let filterStartDate = new Date();
-      
-      if (dateRange === 'week') {
-        filterStartDate.setDate(today.getDate() - 7);
-      } else if (dateRange === 'month') {
-        filterStartDate.setDate(today.getDate() - 30);
-      } else {
-        // For 'all', set to a very old date
-        filterStartDate = new Date(2000, 0, 1);
+      const allBookings = bookingsRes.bookings as LegacyBookingRow[];
+      const allUsers = usersRes.users as User[];
+      setUsers(allUsers);
+      setSpaceCount(roomsRes.rooms.length);
+
+      const roomIdToName = new Map<number, string>();
+      for (const room of roomsRes.rooms) {
+        roomIdToName.set(room.id, spaceNameFromRoomData(room.data, room.id));
       }
 
-      // Filter bookings by date range
-      const filteredBookings = allBookings.filter((booking) => {
-        const bookingDate = new Date(booking.date);
-        return bookingDate >= filterStartDate && bookingDate <= today;
-      });
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayStr = toYmd(today);
 
-      // Calculate total bookings
-      setTotalBookings(filteredBookings.length);
+      let periodStartStr: string;
+      let periodEndStr: string;
 
-      // Calculate active users (users with at least one booking)
-      const uniqueUserIds = new Set(filteredBookings.map((b) => b.id_user));
+      if (dateRange === 'week') {
+        const start = addCalendarDays(today, -7);
+        periodStartStr = toYmd(start);
+        periodEndStr = toYmd(addCalendarDays(today, UPCOMING_HORIZON_DAYS));
+      } else if (dateRange === 'month') {
+        const start = addCalendarDays(today, -30);
+        periodStartStr = toYmd(start);
+        periodEndStr = toYmd(addCalendarDays(today, UPCOMING_HORIZON_DAYS));
+      } else {
+        periodStartStr = '2000-01-01';
+        periodEndStr = '2099-12-31';
+      }
+
+      const periodBookings = allBookings.filter(
+        (b) => b.date >= periodStartStr && b.date <= periodEndStr
+      );
+
+      const isRejected = (b: LegacyBookingRow) => (b.status || '').toLowerCase() === 'rejected';
+
+      setTotalBookings(periodBookings.length);
+
+      const uniqueUserIds = new Set(periodBookings.map((b) => b.id_user));
       setActiveUsers(uniqueUserIds.size);
 
-      // Calculate user statistics
       const userStatsMap = new Map<number, UserStatistics>();
-      
+
       allUsers.forEach((user: User) => {
         userStatsMap.set(user.id, {
           userId: user.id,
@@ -407,18 +196,13 @@ export default function OfficeStatisticsPage() {
 
       const userDaysMap = new Map<number, Set<string>>();
 
-      filteredBookings.forEach((booking) => {
+      periodBookings.forEach((booking) => {
         const stats = userStatsMap.get(booking.id_user);
         if (stats) {
           stats.totalBookings++;
-          
-          // Check if booking is upcoming
-          const bookingDate = new Date(booking.date);
-          if (bookingDate >= new Date()) {
+          if (booking.date >= todayStr && !isRejected(booking)) {
             stats.upcomingBookings++;
           }
-
-          // Track unique days
           if (!userDaysMap.has(booking.id_user)) {
             userDaysMap.set(booking.id_user, new Set());
           }
@@ -426,7 +210,6 @@ export default function OfficeStatisticsPage() {
         }
       });
 
-      // Update days in office
       userDaysMap.forEach((dates, userId) => {
         const stats = userStatsMap.get(userId);
         if (stats) {
@@ -434,64 +217,69 @@ export default function OfficeStatisticsPage() {
         }
       });
 
-      const sortedUserStats = Array.from(userStatsMap.values())
-        .sort((a, b) => b.totalBookings - a.totalBookings);
+      const sortedUserStats = Array.from(userStatsMap.values()).sort(
+        (a, b) => b.totalBookings - a.totalBookings
+      );
       setUserStats(sortedUserStats);
 
-      // Calculate date statistics
       const dateStatsMap = new Map<string, { bookings: number; users: Set<number> }>();
-      
-      filteredBookings.forEach((booking) => {
+
+      periodBookings.forEach((booking) => {
         if (!dateStatsMap.has(booking.date)) {
           dateStatsMap.set(booking.date, { bookings: 0, users: new Set() });
         }
-        const stats = dateStatsMap.get(booking.date)!;
-        stats.bookings++;
-        stats.users.add(booking.id_user);
+        const row = dateStatsMap.get(booking.date)!;
+        row.bookings++;
+        row.users.add(booking.id_user);
       });
 
       const sortedDateStats = Array.from(dateStatsMap.entries())
-        .map(([date, stats]) => ({
+        .map(([date, row]) => ({
           date,
-          totalBookings: stats.bookings,
-          uniqueUsers: stats.users.size,
+          totalBookings: row.bookings,
+          uniqueUsers: row.users.size,
         }))
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-        .slice(0, 10); // Show last 10 days
+        .slice(0, 10);
 
       setDateStats(sortedDateStats);
 
-      // Calculate average bookings per day
       if (dateStatsMap.size > 0) {
-        const avg = filteredBookings.length / dateStatsMap.size;
+        const avg = periodBookings.length / dateStatsMap.size;
         setAverageBookingsPerDay(Math.round(avg * 10) / 10);
       } else {
         setAverageBookingsPerDay(0);
       }
 
-      // Calculate desk utilization
       const deskBookingMap = new Map<number, number>();
-      filteredBookings.forEach((booking) => {
+      periodBookings.forEach((booking) => {
         const count = deskBookingMap.get(booking.id_room) || 0;
         deskBookingMap.set(booking.id_room, count + 1);
       });
 
       if (deskBookingMap.size > 0) {
         const maxBookings = Math.max(...Array.from(deskBookingMap.values()));
-        const mostPopularDeskId = Array.from(deskBookingMap.entries())
-          .find(([_, count]) => count === maxBookings)?.[0];
+        const mostPopularDeskId = Array.from(deskBookingMap.entries()).find(
+          ([, count]) => count === maxBookings
+        )?.[0];
 
-        if (mostPopularDeskId) {
+        if (mostPopularDeskId != null) {
+          const sample = periodBookings.find((b) => b.id_room === mostPopularDeskId);
+          const label =
+            roomIdToName.get(mostPopularDeskId) ||
+            sample?.room_name?.trim() ||
+            `Space ${mostPopularDeskId}`;
           const totalDays = dateStatsMap.size || 1;
           setMostPopularDesk({
             deskId: mostPopularDeskId,
-            deskName: `Desk ${mostPopularDeskId}`,
+            deskName: label,
             bookingCount: maxBookings,
             utilizationRate: Math.round((maxBookings / totalDays) * 100),
           });
         }
+      } else {
+        setMostPopularDesk(null);
       }
-
     } catch (error) {
       console.error('Failed to load statistics:', error);
       setErrorMessage('Failed to load statistics. Please try again.');
@@ -501,9 +289,13 @@ export default function OfficeStatisticsPage() {
   };
 
   const getRangeName = () => {
-    if (dateRange === 'week') return 'Last 7 Days';
-    if (dateRange === 'month') return 'Last 30 Days';
-    return 'All Time';
+    if (dateRange === 'week') {
+      return 'Past 7 days + next 120 days (scheduled)';
+    }
+    if (dateRange === 'month') {
+      return 'Past 30 days + next 120 days (scheduled)';
+    }
+    return 'All time';
   };
 
   // Filter user stats based on search query
@@ -567,7 +359,7 @@ export default function OfficeStatisticsPage() {
             Office Statistics
           </Typography>
           <Typography variant="body1" sx={{ color: 'rgba(0, 0, 0, 0.6)' }}>
-            Track employee attendance and office utilization (250 employees, 216 desks)
+            Track employee attendance and space utilization ({users.length} users, {spaceCount} bookable spaces)
           </Typography>
         </Box>
 
@@ -579,9 +371,9 @@ export default function OfficeStatisticsPage() {
             onChange={(e) => setDateRange(e.target.value as 'week' | 'month' | 'all')}
             label="Time Period"
           >
-            <MenuItem value="week">Last 7 Days</MenuItem>
-            <MenuItem value="month">Last 30 Days</MenuItem>
-            <MenuItem value="all">All Time</MenuItem>
+            <MenuItem value="week">Past week + upcoming (120d)</MenuItem>
+            <MenuItem value="month">Past month + upcoming (120d)</MenuItem>
+            <MenuItem value="all">All time</MenuItem>
           </Select>
         </FormControl>
       </Box>
@@ -849,33 +641,15 @@ export default function OfficeStatisticsPage() {
                             <Typography variant="body2">{stat.daysInOffice}</Typography>
                           </TableCell>
                           <TableCell align="center">
-                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                              <Chip
-                                label={stat.upcomingBookings}
-                                size="small"
-                                sx={{
-                                  bgcolor: stat.upcomingBookings > 0 ? '#dcfce7' : '#f1f5f9',
-                                  color: stat.upcomingBookings > 0 ? '#16a34a' : '#64748b',
-                                  fontWeight: 600,
-                                }}
-                              />
-                              {stat.userName === 'Rebeca' && (
-                                <Alert
-                                  severity="warning"
-                                  sx={{
-                                    mt: 1,
-                                    fontSize: '0.75rem',
-                                    py: 0.5,
-                                    '& .MuiAlert-message': {
-                                      fontSize: '0.75rem',
-                                      padding: 0,
-                                    },
-                                  }}
-                                >
-                                  You booked 10 days and attended only 1 in last 30 days
-                                </Alert>
-                              )}
-                            </Box>
+                            <Chip
+                              label={stat.upcomingBookings}
+                              size="small"
+                              sx={{
+                                bgcolor: stat.upcomingBookings > 0 ? '#dcfce7' : '#f1f5f9',
+                                color: stat.upcomingBookings > 0 ? '#16a34a' : '#64748b',
+                                fontWeight: 600,
+                              }}
+                            />
                           </TableCell>
                         </TableRow>
                       );

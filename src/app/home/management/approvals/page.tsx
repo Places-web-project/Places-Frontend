@@ -86,7 +86,8 @@ export default function ApprovalsPage() {
           Approvals
         </Typography>
         <Typography variant="body1" sx={{ color: 'rgba(0, 0, 0, 0.6)' }}>
-          Review and approve booking requests from employees
+          Desk bookings are confirmed automatically. Only meeting rooms and other shared spaces appear here for
+          approval.
         </Typography>
       </Box>
 
@@ -136,7 +137,7 @@ export default function ApprovalsPage() {
               No pending approvals
             </Typography>
             <Typography variant="body2" sx={{ color: 'rgba(0, 0, 0, 0.5)' }}>
-              All booking requests have been processed
+              Desk bookings are auto-confirmed. Pending meeting-room requests will show here.
             </Typography>
           </Box>
         ) : (

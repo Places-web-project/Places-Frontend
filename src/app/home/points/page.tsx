@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Typography,
@@ -9,13 +9,13 @@ import {
   Button,
   Chip,
   LinearProgress,
-  Avatar,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   Alert,
   Stack,
+  CircularProgress,
 } from '@mui/material';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import CardGiftcardIcon from '@mui/icons-material/CardGiftcard';
@@ -30,130 +30,127 @@ import MilitaryTechIcon from '@mui/icons-material/MilitaryTech';
 import SportsPoolIcon from '@mui/icons-material/SportsEsports';
 import SpaIcon from '@mui/icons-material/Spa';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
+import type { SvgIconComponent } from '@mui/icons-material';
+import {
+  apiService,
+  type LoyaltyMeResponse,
+  type LoyaltyRewardResponse,
+} from '@/services/api';
 
-interface RewardItem {
+interface DisplayReward {
   id: number;
   name: string;
   description: string;
   points: number;
-  category: 'goodies' | 'training' | 'wellness' | 'food';
-  icon: React.ReactNode;
+  iconKey: string;
   available: number;
-  image?: string;
+}
+
+const ICON_BY_KEY: Record<string, SvgIconComponent> = {
+  CardGiftcard: CardGiftcardIcon,
+  School: SchoolIcon,
+  FitnessCenter: FitnessCenterIcon,
+  Pool: PoolIcon,
+  DirectionsCar: DirectionsCarIcon,
+  LocalCafe: LocalCafeIcon,
+  Restaurant: RestaurantIcon,
+};
+
+function mapReward(r: LoyaltyRewardResponse): DisplayReward {
+  return {
+    id: r.id,
+    name: r.name,
+    description: r.description,
+    points: r.pointsCost,
+    iconKey: r.iconKey,
+    available: r.stockRemaining,
+  };
 }
 
 export default function ManagePointsPage() {
-  const [userPoints, setUserPoints] = useState(300);
-  const [selectedReward, setSelectedReward] = useState<RewardItem | null>(null);
+  const [summary, setSummary] = useState<LoyaltyMeResponse | null>(null);
+  const [rewards, setRewards] = useState<DisplayReward[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [selectedReward, setSelectedReward] = useState<DisplayReward | null>(null);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
-  
-  // Mock data - în realitate ar veni de la backend
-  const userHistoricalRank = 2; // Poziția user-ului în topul prezențelor (1-3 = top 3)
-  const totalUsers = 45; // Total users pentru context
+  const [redeemSubmitting, setRedeemSubmitting] = useState(false);
+  const [redeemError, setRedeemError] = useState<string | null>(null);
 
-  const rewards: RewardItem[] = [
-    {
-      id: 1,
-      name: 'Premium Goodies Bag',
-      description: 'Company branded hoodie, water bottle, and notebook set',
-      points: 500,
-      category: 'goodies',
-      icon: <CardGiftcardIcon />,
-      available: 15,
-    },
-    {
-      id: 2,
-      name: 'Starter Goodies Pack',
-      description: 'T-shirt, pen set, and stickers',
-      points: 200,
-      category: 'goodies',
-      icon: <CardGiftcardIcon />,
-      available: 30,
-    },
-    {
-      id: 3,
-      name: 'Tech Workshop',
-      description: 'Full-day workshop on latest technologies',
-      points: 800,
-      category: 'training',
-      icon: <SchoolIcon />,
-      available: 5,
-    },
-    {
-      id: 4,
-      name: 'Online Course Credit',
-      description: '$100 credit for Udemy, Coursera, or similar platforms',
-      points: 600,
-      category: 'training',
-      icon: <SchoolIcon />,
-      available: 20,
-    },
-    {
-      id: 5,
-      name: 'Gym Membership (1 Month)',
-      description: 'Access to World Class gym facilities',
-      points: 400,
-      category: 'wellness',
-      icon: <FitnessCenterIcon />,
-      available: 10,
-    },
-    {
-      id: 6,
-      name: 'Swimming Pool Pass',
-      description: '10 entries to premium swimming pool',
-      points: 300,
-      category: 'wellness',
-      icon: <PoolIcon />,
-      available: 12,
-    },
-    {
-      id: 7,
-      name: 'Go-Karting Experience',
-      description: '2-hour karting session for up to 4 people',
-      points: 700,
-      category: 'wellness',
-      icon: <DirectionsCarIcon />,
-      available: 8,
-    },
-    {
-      id: 8,
-      name: 'Coffee Shop Voucher',
-      description: '$50 voucher for Starbucks or local coffee shops',
-      points: 250,
-      category: 'food',
-      icon: <LocalCafeIcon />,
-      available: 25,
-    },
-    {
-      id: 9,
-      name: 'Restaurant Voucher',
-      description: '$100 voucher for selected restaurants',
-      points: 500,
-      category: 'food',
-      icon: <RestaurantIcon />,
-      available: 15,
-    },
-  ];
+  const loadData = useCallback(async () => {
+    setLoadError(null);
+    try {
+      const [me, rw] = await Promise.all([apiService.getLoyaltyMe(), apiService.getLoyaltyRewards()]);
+      setSummary(me);
+      setRewards(rw.filter((x) => x.active).map(mapReward));
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : 'Could not load loyalty data');
+      setSummary(null);
+      setRewards([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const handleClaimReward = (reward: RewardItem) => {
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const userPoints = summary?.balance ?? 0;
+  const nextMilestone = summary?.nextMilestone ?? 1000;
+  const userHistoricalRank = summary?.attendanceRank ?? 0;
+  const totalUsers = summary?.rankPoolSize ?? 0;
+  const showVipCard = summary?.isTopThree === true;
+
+  const progress = useMemo(
+    () => Math.min(100, (userPoints / Math.max(nextMilestone, 1)) * 100),
+    [userPoints, nextMilestone]
+  );
+
+  const handleClaimReward = (reward: DisplayReward) => {
+    setRedeemError(null);
     setSelectedReward(reward);
   };
 
-  const confirmClaim = () => {
-    if (selectedReward) {
-      // Deduct points from user
-      setUserPoints(prevPoints => prevPoints - selectedReward.points);
+  const confirmClaim = async () => {
+    if (!selectedReward) return;
+    setRedeemSubmitting(true);
+    setRedeemError(null);
+    try {
+      await apiService.redeemLoyaltyReward(selectedReward.id);
+      await loadData();
+      setSelectedReward(null);
+      setShowSuccessDialog(true);
+    } catch (e) {
+      const msg =
+        e instanceof Error ? e.message : typeof e === 'object' && e && 'message' in e ? String((e as any).message) : 'Redemption failed';
+      setRedeemError(msg || 'Could not redeem reward');
+    } finally {
+      setRedeemSubmitting(false);
     }
-    setSelectedReward(null);
-    setShowSuccessDialog(true);
   };
 
-  const nextMilestone = 1000;
-  const progress = (userPoints / nextMilestone) * 100;
+  const renderRewardIcon = (iconKey: string) => {
+    const Cmp = ICON_BY_KEY[iconKey] ?? CardGiftcardIcon;
+    return <Cmp />;
+  };
+
+  if (loading) {
+    return (
+      <Box sx={{ minHeight: '100vh', bgcolor: '#fafafa', p: 4, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <CircularProgress sx={{ color: '#1e40af' }} />
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#fafafa', p: 4 }}>
       <Box sx={{ maxWidth: 1400, mx: 'auto' }}>
+        {loadError && (
+          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>
+            {loadError}
+          </Alert>
+        )}
         {/* Header */}
         <Box sx={{ mb: 3 }}>
           <Typography
@@ -172,7 +169,7 @@ export default function ManagePointsPage() {
           </Typography>
         </Box>
 
-        {/* Points Overview Card - Simplified */}
+        {/* Points Overview Card */}
         <Card
           elevation={0}
           sx={{
@@ -239,15 +236,15 @@ export default function ManagePointsPage() {
                   variant="caption"
                   sx={{ color: '#6b7280', mt: 0.5, display: 'block', fontSize: '0.75rem' }}
                 >
-                  {nextMilestone - userPoints} points until bonus reward
+                  {Math.max(0, nextMilestone - userPoints)} points until bonus reward
                 </Typography>
               </Box>
             </Box>
           </CardContent>
         </Card>
 
-        {/* VIP Status - Top Attendee Benefit */}
-        {userHistoricalRank <= 3 && (
+        {/* VIP Status */}
+        {showVipCard && (
           <Card
             elevation={0}
             sx={{
@@ -311,13 +308,14 @@ export default function ManagePointsPage() {
                     />
                   </Box>
                   <Typography variant="h6" fontWeight="700" sx={{ color: '#1e40af', mb: 1 }}>
-                    🎉 Congratulations! You're in the Top {userHistoricalRank}!
+                    🎉 Congratulations! You&apos;re in the Top {userHistoricalRank}!
                   </Typography>
                   <Typography variant="body2" sx={{ color: '#6b7280', mb: 2, lineHeight: 1.6 }}>
-                    Based on your exceptional office attendance record, you've earned a spot in the top {userHistoricalRank} out of {totalUsers} employees! 
-                    This achievement comes with exclusive benefits.
+                    Based on your exceptional office attendance record, you&apos;ve earned a spot in the top {userHistoricalRank}
+                    {totalUsers > 0 ? ` out of ${totalUsers} colleagues with desk check-ins (last 30 days)` : ''}! This achievement comes
+                    with exclusive benefits.
                   </Typography>
-                  
+
                   <Box
                     sx={{
                       bgcolor: '#eff6ff',
@@ -383,7 +381,7 @@ export default function ManagePointsPage() {
                       </Box>
                     </Stack>
                   </Box>
-                  
+
                   <Button
                     variant="contained"
                     sx={{
@@ -396,7 +394,7 @@ export default function ManagePointsPage() {
                         bgcolor: '#1e3a8a',
                       },
                     }}
-                    onClick={() => window.location.href = '/booking?filter=recreational'}
+                    onClick={() => (window.location.href = '/booking?filter=recreational')}
                   >
                     Book Recreational Spaces Now
                   </Button>
@@ -406,7 +404,7 @@ export default function ManagePointsPage() {
           </Card>
         )}
 
-        {/* How to Earn Points - Simplified */}
+        {/* How to Earn Points */}
         <Card
           elevation={0}
           sx={{
@@ -423,31 +421,32 @@ export default function ManagePointsPage() {
                 How to Earn Points
               </Typography>
             </Box>
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, gap: 2 }}>
-              <Box sx={{ textAlign: 'center', p: 2, bgcolor: '#f9fafb', borderRadius: 2 }}>
-                <Typography variant="h5" fontWeight="700" sx={{ color: '#1e40af' }}>
-                  +10
-                </Typography>
-                <Typography variant="body2" sx={{ color: '#6b7280', fontSize: '0.813rem' }}>
-                  Per desk booking
-                </Typography>
-              </Box>
-              <Box sx={{ textAlign: 'center', p: 2, bgcolor: '#f9fafb', borderRadius: 2 }}>
-                <Typography variant="h5" fontWeight="700" sx={{ color: '#1e40af' }}>
-                  +50
-                </Typography>
-                <Typography variant="body2" sx={{ color: '#6b7280', fontSize: '0.813rem' }}>
-                  Weekly check-in bonus
-                </Typography>
-              </Box>
-              <Box sx={{ textAlign: 'center', p: 2, bgcolor: '#f9fafb', borderRadius: 2 }}>
-                <Typography variant="h5" fontWeight="700" sx={{ color: '#1e40af' }}>
-                  +500
-                </Typography>
-                <Typography variant="body2" sx={{ color: '#6b7280', fontSize: '0.813rem' }}>
-                  Monthly attendance
-                </Typography>
-              </Box>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
+                gap: 2,
+              }}
+            >
+              {(summary?.earningRules ?? []).map((rule) => (
+                <Box key={rule.label} sx={{ textAlign: 'center', p: 2, bgcolor: '#f9fafb', borderRadius: 2 }}>
+                  <Typography
+                    variant="h5"
+                    fontWeight="700"
+                    sx={{ color: rule.implemented ? '#1e40af' : '#9ca3af' }}
+                  >
+                    +{rule.points}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#6b7280', fontSize: '0.813rem' }}>
+                    {rule.label}
+                  </Typography>
+                  {!rule.implemented && (
+                    <Typography variant="caption" sx={{ color: '#9ca3af', display: 'block', mt: 0.5 }}>
+                      Coming soon
+                    </Typography>
+                  )}
+                </Box>
+              ))}
             </Box>
           </CardContent>
         </Card>
@@ -497,7 +496,7 @@ export default function ManagePointsPage() {
                       color: '#1e40af',
                     }}
                   >
-                    {reward.icon}
+                    {renderRewardIcon(reward.iconKey)}
                   </Box>
                   <Chip
                     label={`${reward.points} pts`}
@@ -532,18 +531,18 @@ export default function ManagePointsPage() {
               <Box sx={{ p: 2.5, pt: 0 }}>
                 <Button
                   fullWidth
-                  variant={userPoints >= reward.points ? 'contained' : 'outlined'}
-                  disabled={userPoints < reward.points}
+                  variant={userPoints >= reward.points && reward.available > 0 ? 'contained' : 'outlined'}
+                  disabled={userPoints < reward.points || reward.available <= 0 || redeemSubmitting}
                   onClick={() => handleClaimReward(reward)}
                   sx={{
-                    bgcolor: userPoints >= reward.points ? '#1e40af' : undefined,
-                    color: userPoints >= reward.points ? 'white' : '#6b7280',
+                    bgcolor: userPoints >= reward.points && reward.available > 0 ? '#1e40af' : undefined,
+                    color: userPoints >= reward.points && reward.available > 0 ? 'white' : '#6b7280',
                     borderColor: '#e5e7eb',
                     fontWeight: 600,
                     fontSize: '0.813rem',
                     py: 1,
                     '&:hover': {
-                      bgcolor: userPoints >= reward.points ? '#1e3a8a' : undefined,
+                      bgcolor: userPoints >= reward.points && reward.available > 0 ? '#1e3a8a' : undefined,
                       borderColor: '#1e40af',
                     },
                     '&:disabled': {
@@ -553,9 +552,11 @@ export default function ManagePointsPage() {
                     },
                   }}
                 >
-                  {userPoints >= reward.points
-                    ? 'Claim Reward'
-                    : `Need ${reward.points - userPoints} more`}
+                  {reward.available <= 0
+                    ? 'Out of stock'
+                    : userPoints >= reward.points
+                      ? 'Claim Reward'
+                      : `Need ${reward.points - userPoints} more`}
                 </Button>
               </Box>
             </Card>
@@ -565,14 +566,14 @@ export default function ManagePointsPage() {
         {/* Claim Confirmation Dialog */}
         <Dialog
           open={selectedReward !== null}
-          onClose={() => setSelectedReward(null)}
+          onClose={() => !redeemSubmitting && setSelectedReward(null)}
           maxWidth="xs"
           fullWidth
           PaperProps={{
             sx: {
               borderRadius: 2,
               border: '1px solid #e5e7eb',
-            }
+            },
           }}
         >
           {selectedReward && (
@@ -591,7 +592,7 @@ export default function ManagePointsPage() {
                       color: '#1e40af',
                     }}
                   >
-                    {selectedReward.icon}
+                    {renderRewardIcon(selectedReward.iconKey)}
                   </Box>
                   <Box>
                     <Typography variant="subtitle1" fontWeight="600" sx={{ color: '#1a1a1a' }}>
@@ -604,9 +605,14 @@ export default function ManagePointsPage() {
                 </Box>
               </DialogTitle>
               <DialogContent>
-                <Alert 
+                {redeemError && (
+                  <Alert severity="error" sx={{ mb: 2 }}>
+                    {redeemError}
+                  </Alert>
+                )}
+                <Alert
                   severity="info"
-                  sx={{ 
+                  sx={{
                     mb: 2,
                     bgcolor: '#eff6ff',
                     border: '1px solid #bfdbfe',
@@ -623,15 +629,13 @@ export default function ManagePointsPage() {
                 </Typography>
               </DialogContent>
               <DialogActions sx={{ p: 2.5, pt: 0 }}>
-                <Button 
-                  onClick={() => setSelectedReward(null)}
-                  sx={{ color: '#6b7280' }}
-                >
+                <Button onClick={() => setSelectedReward(null)} disabled={redeemSubmitting} sx={{ color: '#6b7280' }}>
                   Cancel
                 </Button>
                 <Button
                   variant="contained"
-                  onClick={confirmClaim}
+                  onClick={() => void confirmClaim()}
+                  disabled={redeemSubmitting}
                   sx={{
                     bgcolor: '#1e40af',
                     '&:hover': {
@@ -639,7 +643,7 @@ export default function ManagePointsPage() {
                     },
                   }}
                 >
-                  Confirm
+                  {redeemSubmitting ? 'Processing…' : 'Confirm'}
                 </Button>
               </DialogActions>
             </>
@@ -655,7 +659,7 @@ export default function ManagePointsPage() {
             sx: {
               borderRadius: 2,
               border: '1px solid #e5e7eb',
-            }
+            },
           }}
         >
           <DialogContent sx={{ textAlign: 'center', py: 4, px: 3 }}>
