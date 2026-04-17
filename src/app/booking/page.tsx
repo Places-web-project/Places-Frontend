@@ -112,6 +112,15 @@ function BookingPageContent() {
         setDesks(desks);
       } catch (error) {
         console.error('Failed to load desks from API:', error);
+        const message =
+          error instanceof Error && error.message.toLowerCase().includes('forbidden')
+            ? 'Session expired or missing permissions for booking data. Please log out and log in again.'
+            : 'Failed to load booking data. Please try again.';
+        setSnackbar({
+          open: true,
+          message,
+          severity: 'error',
+        });
         // Fallback: try localStorage for migration
         const savedDesks = localStorage.getItem('desk-layout');
         if (savedDesks) {

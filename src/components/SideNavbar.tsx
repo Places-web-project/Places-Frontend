@@ -98,7 +98,6 @@ export default function SideNavbar({ children }: SideNavbarProps) {
           }
         }
         
-        console.log('Loaded user type from localStorage:', userTypeValue);
       } catch (error) {
         console.error('Failed to parse user data:', error);
       }
@@ -220,7 +219,6 @@ export default function SideNavbar({ children }: SideNavbarProps) {
         const user = JSON.parse(userStr);
         const userTypeValue = user.type || null;
         setUserType(userTypeValue);
-        console.log('Reloaded user type on pathname change:', userTypeValue);
       } catch (error) {
         console.error('Failed to parse user data:', error);
       }
@@ -402,6 +400,8 @@ export default function SideNavbar({ children }: SideNavbarProps) {
                   // Clear user data and authentication
                   localStorage.removeItem('user');
                   localStorage.removeItem('isAuthenticated');
+                  localStorage.removeItem('authToken');
+                  localStorage.removeItem('token');
                   localStorage.removeItem('userAvatar');
                   localStorage.removeItem('userAvatarSvg');
                   // Redirect to login

@@ -168,7 +168,34 @@ class ApiService {
     if (typeof window === 'undefined') {
       return null;
     }
-    return localStorage.getItem('authToken');
+
+    const authToken = localStorage.getItem('authToken');
+    if (authToken) {
+      return authToken;
+    }
+
+    // Legacy fallback for older sessions.
+    const legacyToken = localStorage.getItem('token');
+    if (legacyToken) {
+      localStorage.setItem('authToken', legacyToken);
+      return legacyToken;
+    }
+
+    // Some legacy user payloads may embed token.
+    const userRaw = localStorage.getItem('user');
+    if (userRaw) {
+      try {
+        const parsed = JSON.parse(userRaw) as { token?: string };
+        if (parsed.token && parsed.token.trim()) {
+          localStorage.setItem('authToken', parsed.token);
+          return parsed.token;
+        }
+      } catch {
+        // ignore legacy user parsing issues
+      }
+    }
+
+    return null;
   }
 
   private getStoredUser(): LegacyUser | null {
@@ -885,6 +912,19 @@ class ApiService {
   }
 
   async getUsers(): Promise<{ message: string; users: LegacyUser[] }> {
+    const current = this.getStoredUser();
+    const role = current?.type?.toUpperCase();
+    if (role !== 'MANAGER' && role !== 'ADMIN') {
+      if (current) {
+        this.usersCache = [current];
+        return {
+          message: 'Current user only (listing all users requires manager or admin)',
+          users: [current],
+        };
+      }
+      return { message: 'No authenticated user', users: [] };
+    }
+
     try {
       const paged = await this.fetchWithErrorHandling<PagedResponse<AuthUserView>>(
         `${AUTH_API_BASE_URL}/api/users?page=0&size=300`,
@@ -922,6 +962,7 @@ class ApiService {
 
     if (typeof window !== 'undefined') {
       localStorage.setItem('authToken', response.token);
+      localStorage.setItem('token', response.token);
       localStorage.setItem('user', JSON.stringify(legacyUser));
       localStorage.setItem('isAuthenticated', 'true');
     }
@@ -950,6 +991,7 @@ class ApiService {
 
     if (typeof window !== 'undefined') {
       localStorage.setItem('authToken', response.token);
+      localStorage.setItem('token', response.token);
       localStorage.setItem('user', JSON.stringify(legacyUser));
       localStorage.setItem('isAuthenticated', 'true');
     }
