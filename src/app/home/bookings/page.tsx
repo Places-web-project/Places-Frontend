@@ -55,6 +55,7 @@ interface Booking {
 export default function YourBookingsPage() {
   const router = useRouter();
   const [workspaceType, setWorkspaceType] = useState<string>('All');
+  const [searchQuery, setSearchQuery] = useState('');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [filteredBookings, setFilteredBookings] = useState<Booking[]>([]);
@@ -76,11 +77,11 @@ export default function YourBookingsPage() {
 
   useEffect(() => {
     filterBookings();
-  }, [workspaceType, bookings]);
+  }, [workspaceType, searchQuery, bookings]);
 
   useEffect(() => {
     setPage(0);
-  }, [workspaceType, bookings]);
+  }, [workspaceType, searchQuery, bookings]);
 
   const loadBookings = async () => {
     try {
@@ -172,21 +173,22 @@ export default function YourBookingsPage() {
   };
 
   const filterBookings = () => {
-    if (workspaceType === 'All') {
-      setFilteredBookings(bookings);
-    } else {
-      const filtered = bookings.filter((booking) => {
-        if (workspaceType === 'Desk') {
-          return booking.type === 'Desk';
-        } else if (workspaceType === 'Meeting Room') {
-          return booking.type === 'Meeting Room';
-        } else if (workspaceType === 'recreational') {
-          return booking.type === 'Recreational';
-        }
-        return true;
-      });
-      setFilteredBookings(filtered);
-    }
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    const filtered = bookings.filter((booking) => {
+      const matchesType =
+        workspaceType === 'All' ||
+        (workspaceType === 'Desk' && booking.type === 'Desk') ||
+        (workspaceType === 'Meeting Room' && booking.type === 'Meeting Room') ||
+        (workspaceType === 'recreational' && booking.type === 'Recreational');
+
+      const matchesWorkspace =
+        normalizedQuery.length === 0 ||
+        booking.workspace.toLowerCase().includes(normalizedQuery);
+
+      return matchesType && matchesWorkspace;
+    });
+
+    setFilteredBookings(filtered);
   };
 
   const handleViewOnFloorPlan = (booking: Booking) => {
@@ -379,6 +381,15 @@ export default function YourBookingsPage() {
               <MenuItem value="recreational">Recreational</MenuItem>
             </Select>
           </FormControl>
+
+          <TextField
+            size="small"
+            label="Search workspace"
+            placeholder="Search by workspace name"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            sx={{ minWidth: 260, flex: '1 1 260px' }}
+          />
         </Box>
 
         {/* Table */}
@@ -582,4 +593,3 @@ export default function YourBookingsPage() {
     </Box>
   );
 }
-
