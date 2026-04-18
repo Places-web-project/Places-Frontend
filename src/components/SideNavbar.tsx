@@ -65,6 +65,9 @@ export default function SideNavbar({ children }: SideNavbarProps) {
     pathname?.includes('/home/admin')
   );
   const [userType, setUserType] = useState<string | null>(null);
+  const normalizedUserType = (userType || 'EMPLOYEE').toUpperCase();
+  const canAccessManagement = normalizedUserType === 'MANAGER' || normalizedUserType === 'ADMIN';
+  const canAccessAdmin = normalizedUserType === 'ADMIN';
 
   const handleAvatarClick = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -741,8 +744,8 @@ export default function SideNavbar({ children }: SideNavbarProps) {
             </List>
           )}
 
-          {/* Management Main Item - Only show for MANAGER (not ADMIN) */}
-          {userType === 'MANAGER' && (
+          {/* Management Main Item - Show for MANAGER and ADMIN */}
+          {canAccessManagement && (
             <>
               <ListItem disablePadding>
                 <ListItemButton
@@ -877,7 +880,7 @@ export default function SideNavbar({ children }: SideNavbarProps) {
           )}
 
           {/* Admin Main Item - Only show for ADMIN */}
-          {userType === 'ADMIN' && (
+          {canAccessAdmin && (
             <>
               <ListItem disablePadding>
                 <ListItemButton
@@ -1018,4 +1021,3 @@ export default function SideNavbar({ children }: SideNavbarProps) {
     </Box>
   );
 }
-

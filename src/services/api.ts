@@ -453,6 +453,8 @@ class ApiService {
         name: desk.name,
         capacity: desk.capacity ?? 1,
         roomType: (desk.type || 'desk').toUpperCase(),
+        positionX: desk.position?.x ?? null,
+        positionY: desk.position?.y ?? null,
       };
 
       if (existingIds.has(desk.id)) {
