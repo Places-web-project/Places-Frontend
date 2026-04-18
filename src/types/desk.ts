@@ -45,11 +45,14 @@ export interface Desk {
 }
 
 export interface Booking {
+  bookingId?: number;
   deskId: number;
+  userId?: number;
   userName: string;
   date: string;
   startTime: string; // HH:mm format
   endTime: string; // HH:mm format
+  status?: string;
   duration?: number; // minutes
   participants?: string[]; // List of participant names for meeting rooms and recreational spaces
 }

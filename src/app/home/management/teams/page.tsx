@@ -481,7 +481,7 @@ export default function TeamManagementPage() {
           <Button
             onClick={handleAddMember}
             variant="contained"
-            disabled={!selectedUserId || (selectedTeam && getAvailableUsers(selectedTeam).length === 0)}
+            disabled={!selectedUserId || (selectedTeam ? getAvailableUsers(selectedTeam).length === 0 : false)}
           >
             Add
           </Button>
@@ -517,4 +517,3 @@ export default function TeamManagementPage() {
     </Box>
   );
 }
-

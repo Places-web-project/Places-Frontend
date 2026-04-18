@@ -124,7 +124,9 @@ export default function FloorPlanMap({
   };
 
   const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
+    if (e.cancelable) {
+      e.preventDefault();
+    }
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
     setScale(prevScale => Math.max(0.5, Math.min(3, prevScale * delta)));
   };

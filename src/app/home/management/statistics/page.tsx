@@ -386,7 +386,7 @@ export default function OfficeStatisticsPage() {
 
       {/* Key Metrics Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card sx={{ border: '1px solid #bfdbfe', borderRadius: 2 }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -416,7 +416,7 @@ export default function OfficeStatisticsPage() {
           </Card>
         </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card sx={{ border: '1px solid #bfdbfe', borderRadius: 2 }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -446,7 +446,7 @@ export default function OfficeStatisticsPage() {
           </Card>
         </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card sx={{ border: '1px solid #bfdbfe', borderRadius: 2 }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -476,7 +476,7 @@ export default function OfficeStatisticsPage() {
           </Card>
         </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card sx={{ border: '1px solid #bfdbfe', borderRadius: 2 }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -509,7 +509,7 @@ export default function OfficeStatisticsPage() {
 
       <Grid container spacing={3}>
         {/* User Statistics Table */}
-        <Grid item xs={12} lg={7}>
+        <Grid size={{ xs: 12, lg: 7 }}>
           <Paper sx={{ p: 3, borderRadius: 2, border: '1px solid #bfdbfe' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -674,7 +674,7 @@ export default function OfficeStatisticsPage() {
         </Grid>
 
         {/* Daily Statistics */}
-        <Grid item xs={12} lg={5}>
+        <Grid size={{ xs: 12, lg: 5 }}>
           <Paper sx={{ p: 3, borderRadius: 2, border: '1px solid #bfdbfe' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
               <BarChartIcon sx={{ color: '#1e40af', mr: 1 }} />
@@ -744,4 +744,3 @@ export default function OfficeStatisticsPage() {
     </Box>
   );
 }
-

@@ -48,10 +48,18 @@ interface BookingApiModel {
   roomId: number;
   roomName: string;
   teamId: number | null;
-  startsAt: string;
-  endsAt: string;
+  startsAt: string | number[];
+  endsAt: string | number[];
   status: string;
-  checkedInAt?: string | null;
+  checkedInAt?: string | number[] | null;
+}
+
+export interface BookingChatMessageApiModel {
+  id: number;
+  bookingId: number;
+  senderUserId: number;
+  content: string;
+  createdAt: string | number[];
 }
 
 interface AttendanceSummaryApiModel {
@@ -286,8 +294,15 @@ class ApiService {
     };
   }
 
-  private parseDateTime(iso: string): { date: string; time: string } {
-    const dateObj = new Date(iso);
+  private parseDateTime(iso: string | number[]): { date: string; time: string } {
+    let dateObj: Date;
+    if (Array.isArray(iso)) {
+      // Java LocalDateTime serialized as array: [year, month, day, hour, minute, second?, nano?]
+      const [year, month, day, hour = 0, minute = 0] = iso as number[];
+      dateObj = new Date(year, month - 1, day, hour, minute);
+    } else {
+      dateObj = new Date(iso as string);
+    }
     const yyyy = dateObj.getFullYear();
     const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
     const dd = String(dateObj.getDate()).padStart(2, '0');
@@ -301,6 +316,25 @@ class ApiService {
 
   private toIso(date: string, time: string): string {
     return `${date}T${time}:00`;
+  }
+
+  private normalizeOptionalDateTime(value?: string | number[] | null): string | null {
+    if (!value) {
+      return null;
+    }
+    if (Array.isArray(value)) {
+      const [year, month, day, hour = 0, minute = 0, second = 0] = value;
+      return new Date(year, month - 1, day, hour, minute, second).toISOString();
+    }
+    return value;
+  }
+
+  private normalizeDateTime(value: string | number[]): string {
+    if (Array.isArray(value)) {
+      const [year, month, day, hour = 0, minute = 0, second = 0] = value;
+      return new Date(year, month - 1, day, hour, minute, second).toISOString();
+    }
+    return value;
   }
 
   private mapRoomType(roomType: string): 'desk' | 'meeting-room' | 'recreational' {
@@ -358,7 +392,7 @@ class ApiService {
       end: ends.time,
       status: (booking.status || '').toLowerCase(),
       room_name: booking.roomName,
-      checked_in_at: booking.checkedInAt ?? null,
+      checked_in_at: this.normalizeOptionalDateTime(booking.checkedInAt),
     };
   }
 
@@ -452,22 +486,8 @@ class ApiService {
     };
   }
 
+  /** Fetches every page of bookings so booking availability is not truncated to the first page. */
   async getBookings(): Promise<{ message: string; bookings: LegacyBooking[] }> {
-    const paged = await this.fetchWithErrorHandling<PagedResponse<BookingApiModel>>(
-      `${BOOKING_API_BASE_URL}/api/bookings?page=0&size=500`,
-      {
-        headers: this.withAuthHeaders(),
-      }
-    );
-
-    return {
-      message: 'List of bookings',
-      bookings: paged.content.map((b) => this.bookingToLegacy(b)),
-    };
-  }
-
-  /** Fetches every page of bookings (for analytics). Caps at 200k rows as a safeguard. */
-  async getAllBookings(): Promise<{ message: string; bookings: LegacyBooking[] }> {
     const pageSize = 500;
     const maxPages = 400;
     const all: LegacyBooking[] = [];
@@ -493,6 +513,82 @@ class ApiService {
       message: 'List of bookings',
       bookings: all,
     };
+  }
+
+  async getBookingsForRoom(roomId: number): Promise<LegacyBooking[]> {
+    const pageSize = 200;
+    const maxPages = 20;
+    const all: LegacyBooking[] = [];
+    let page = 0;
+    let last = false;
+
+    do {
+      const paged = await this.fetchWithErrorHandling<PagedResponse<BookingApiModel>>(
+        `${BOOKING_API_BASE_URL}/api/bookings?roomId=${roomId}&page=${page}&size=${pageSize}`,
+        {
+          headers: this.withAuthHeaders(),
+        }
+      );
+      all.push(...paged.content.map((booking) => this.bookingToLegacy(booking)));
+      last = Boolean(paged.last);
+      page += 1;
+      if (page >= maxPages) {
+        break;
+      }
+    } while (!last);
+
+    return all;
+  }
+
+  async getBookingMessages(bookingId: number): Promise<BookingChatMessageApiModel[]> {
+    const messages = await this.fetchWithErrorHandling<BookingChatMessageApiModel[]>(
+      `${BOOKING_API_BASE_URL}/api/chat/bookings/${bookingId}/messages`,
+      {
+        headers: this.withAuthHeaders(),
+      }
+    );
+
+    return messages.map((message) => ({
+      ...message,
+      createdAt: this.normalizeDateTime(message.createdAt),
+    }));
+  }
+
+  async sendBookingMessage(
+    bookingId: number,
+    content: string,
+    notificationEmail?: string
+  ): Promise<BookingChatMessageApiModel> {
+    const message = await this.fetchWithErrorHandling<BookingChatMessageApiModel>(
+      `${BOOKING_API_BASE_URL}/api/chat/bookings/${bookingId}/messages`,
+      {
+        method: 'POST',
+        headers: this.withAuthHeaders(),
+        body: JSON.stringify({ content, notificationEmail }),
+      }
+    );
+
+    return {
+      ...message,
+      createdAt: this.normalizeDateTime(message.createdAt),
+    };
+  }
+
+  getChatWebSocketUrl(bookingId: number): string | null {
+    const token = this.getStoredToken();
+    if (!token) {
+      return null;
+    }
+
+    const url = new URL(`${API_WS_URL}/ws/chat`);
+    url.searchParams.set('bookingId', String(bookingId));
+    url.searchParams.set('token', token);
+    return url.toString();
+  }
+
+  /** Backward-compatible alias for callers that explicitly request the full booking history. */
+  async getAllBookings(): Promise<{ message: string; bookings: LegacyBooking[] }> {
+    return this.getBookings();
   }
 
   /** Fetches every page of rooms (floor plan may exceed one page). */
@@ -1202,11 +1298,14 @@ class ApiService {
           bookings: roomBookings
             .filter((booking) => (booking.status || '').toLowerCase() === 'approved' || (booking.status || '').toLowerCase() === 'active')
             .map((booking) => ({
+              bookingId: booking.id,
               deskId: desk.id,
+              userId: booking.id_user,
               userName: usersMap.get(booking.id_user)?.name || `User ${booking.id_user}`,
               date: booking.date,
               startTime: booking.start,
               endTime: booking.end,
+              status: booking.status,
             })),
         };
       }

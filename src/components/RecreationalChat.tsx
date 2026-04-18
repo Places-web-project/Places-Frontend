@@ -5,6 +5,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  Alert,
   Box,
   TextField,
   IconButton,
@@ -17,32 +18,31 @@ import {
 import SendIcon from '@mui/icons-material/Send';
 import CloseIcon from '@mui/icons-material/Close';
 import ChatIcon from '@mui/icons-material/Chat';
-import { API_BASE_URL, API_WS_URL } from '@/services/api';
+import { apiService, BookingChatMessageApiModel } from '@/services/api';
+
+interface ChatUser {
+  id: number;
+  name: string;
+  avatar: string;
+  mood: string;
+}
 
 interface Message {
   id: number;
-  chatId: number;
+  bookingId: number;
   userId: number;
   content: string;
   timestamp: string;
-  user?: {
-    id: number;
-    name: string;
-    avatar: string;
-    mood: string;
-  };
+  user?: ChatUser;
 }
 
 interface Chat {
   id: number;
-  roomId: number;
-  date: string;
-  startTime: string;
-  endTime: string;
-  createdAt: string;
+  bookingId: number;
 }
 
 interface RecreationalChatProps {
+  bookingId?: number;
   roomId: number;
   roomName: string;
   date: string;
@@ -54,6 +54,7 @@ interface RecreationalChatProps {
 }
 
 export default function RecreationalChat({
+  bookingId,
   roomId,
   roomName,
   date,
@@ -68,8 +69,13 @@ export default function RecreationalChat({
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const wsConnectTimeoutRef = useRef<number | null>(null);
+  const usersByIdRef = useRef<Map<number, ChatUser>>(new Map());
+  const wsExpectedCloseRef = useRef(false);
+  const wsConnectedRef = useRef(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -85,103 +91,142 @@ export default function RecreationalChat({
     }
 
     return () => {
+      if (wsConnectTimeoutRef.current !== null) {
+        window.clearTimeout(wsConnectTimeoutRef.current);
+        wsConnectTimeoutRef.current = null;
+      }
       if (wsRef.current) {
+        wsExpectedCloseRef.current = true;
         wsRef.current.close();
+        wsRef.current = null;
       }
     };
-  }, [open, roomId, date, startTime, endTime]);
+  }, [open, bookingId, roomId, date, startTime, endTime]);
+
+  const mapUsers = async () => {
+    try {
+      const response = await apiService.getUsers();
+      usersByIdRef.current = new Map(
+        response.users.map((user) => [
+          user.id,
+          {
+            id: user.id,
+            name: user.name,
+            avatar: user.avatar,
+            mood: user.mood || 'happy',
+          },
+        ])
+      );
+    } catch {
+      usersByIdRef.current = new Map();
+    }
+  };
+
+  const normalizeTimestamp = (value: string | number[]) => {
+    if (Array.isArray(value)) {
+      const [year, month, day, hour = 0, minute = 0, second = 0] = value;
+      return new Date(year, month - 1, day, hour, minute, second).toISOString();
+    }
+    return value;
+  };
+
+  const toMessage = (message: BookingChatMessageApiModel): Message => ({
+    id: message.id,
+    bookingId: message.bookingId,
+    userId: message.senderUserId,
+    content: message.content,
+    timestamp: normalizeTimestamp(message.createdAt),
+    user: usersByIdRef.current.get(message.senderUserId),
+  });
 
   const initializeChat = async () => {
     try {
       setLoading(true);
-      
-      // Create or get chat
-      const response = await fetch(`${API_BASE_URL}/chats`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          roomId,
-          date,
-          startTime,
-          endTime,
-        }),
-      });
+      setChatError(null);
 
-      if (!response.ok) throw new Error('Failed to create/get chat');
-
-      const data = await response.json();
-      console.log('💬 Chat initialized:', data.chat);
-      console.log('📧 Initial messages loaded:', data.messages?.length || 0);
-      data.messages?.forEach((msg: any, idx: number) => {
-        console.log(`  Message ${idx + 1}:`, {
-          id: msg.id,
-          user: msg.user?.name,
-          hasAvatar: !!(msg.user?.avatar && msg.user.avatar.trim()),
-          avatarLength: msg.user?.avatar?.length || 0,
-        });
-      });
-      
-      setChat(data.chat);
-      setMessages(data.messages || []);
-
-      // Setup WebSocket connection
-      if (data.chat?.id) {
-        setupWebSocket(data.chat.id);
+      if (!bookingId) {
+        setChat(null);
+        setMessages([]);
+        setChatError('Chat is available only for an existing booking for this room and time slot.');
+        return;
       }
+
+      await mapUsers();
+      const bookingMessages = await apiService.getBookingMessages(bookingId);
+
+      setChat({ id: bookingId, bookingId });
+      setMessages(bookingMessages.map(toMessage));
+      setupWebSocket(bookingId);
     } catch (error) {
       console.error('Error initializing chat:', error);
+      setChat(null);
+      setMessages([]);
+      setChatError(error instanceof Error ? error.message : 'Failed to load chat messages.');
     } finally {
       setLoading(false);
     }
   };
 
-  const setupWebSocket = (chatId: number) => {
-    // Close existing connection if any
-    if (wsRef.current) {
-      wsRef.current.close();
+  const setupWebSocket = (resolvedBookingId: number) => {
+    if (wsConnectTimeoutRef.current !== null) {
+      window.clearTimeout(wsConnectTimeoutRef.current);
+      wsConnectTimeoutRef.current = null;
     }
 
-    // Create new WebSocket connection
-    const ws = new WebSocket(`${API_WS_URL}/chats/ws/${chatId}`);
+    if (wsRef.current) {
+      wsExpectedCloseRef.current = true;
+      wsRef.current.close();
+      wsRef.current = null;
+    }
 
-    ws.onopen = () => {
-      console.log('WebSocket connected');
-    };
+    const wsUrl = apiService.getChatWebSocketUrl(resolvedBookingId);
+    if (!wsUrl) {
+      return;
+    }
 
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        console.log('📨 WebSocket message received:', message);
-        console.log('  - User data:', message.user);
-        console.log('  - Avatar:', message.user?.avatar ? 'Present' : 'Missing');
-        
-        // Add new message to the list if it's a valid message object
-        if (message.id && message.content) {
-          setMessages((prev) => {
-            // Avoid duplicates
-            if (prev.some((m) => m.id === message.id)) {
-              return prev;
-            }
-            console.log('✅ Adding message to state with user:', message.user?.name);
-            return [...prev, message];
-          });
+    wsExpectedCloseRef.current = false;
+    wsConnectedRef.current = false;
+    wsConnectTimeoutRef.current = window.setTimeout(() => {
+      wsConnectTimeoutRef.current = null;
+      const ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        wsConnectedRef.current = true;
+        console.log('WebSocket connected');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data) as BookingChatMessageApiModel;
+          if (message.id && message.content) {
+            const hydrated = toMessage(message);
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === hydrated.id)) {
+                return prev;
+              }
+              return [...prev, hydrated];
+            });
+          }
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
         }
-      } catch (error) {
-        console.error('Error parsing WebSocket message:', error);
-      }
-    };
+      };
 
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
+      ws.onerror = (error) => {
+        if (!wsExpectedCloseRef.current) {
+          console.error('WebSocket error:', error);
+        }
+      };
 
-    ws.onclose = () => {
-      console.log('WebSocket disconnected');
-    };
+      ws.onclose = () => {
+        if (!wsExpectedCloseRef.current && wsConnectedRef.current) {
+          console.log('WebSocket disconnected');
+        }
+        wsConnectedRef.current = false;
+      };
 
-    wsRef.current = ws;
+      wsRef.current = ws;
+    }, 150);
   };
 
   const handleSendMessage = async () => {
@@ -189,30 +234,16 @@ export default function RecreationalChat({
 
     try {
       setSending(true);
-      const response = await fetch(`${API_BASE_URL}/chats/messages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          chatId: chat.id,
-          userId: currentUserId,
-          content: newMessage.trim(),
-        }),
-      });
+      const message = await apiService.sendBookingMessage(chat.bookingId, newMessage.trim());
+      const hydrated = toMessage(message);
 
-      if (!response.ok) throw new Error('Failed to send message');
-
-      const data = await response.json();
-      
-      // Message will be added via WebSocket, but add it optimistically
       setMessages((prev) => {
-        if (prev.some((m) => m.id === data.message.id)) {
+        if (prev.some((m) => m.id === hydrated.id)) {
           return prev;
         }
-        return [...prev, data.message];
+        return [...prev, hydrated];
       });
-      
+
       setNewMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
@@ -302,6 +333,20 @@ export default function RecreationalChat({
               }}
             >
               <CircularProgress />
+            </Box>
+          ) : chatError ? (
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center',
+                height: '100%',
+              }}
+            >
+              <Alert severity="info" sx={{ maxWidth: 420 }}>
+                {chatError}
+              </Alert>
             </Box>
           ) : messages.length === 0 ? (
             <Box
@@ -441,14 +486,14 @@ export default function RecreationalChat({
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               onKeyPress={handleKeyPress}
-              disabled={sending || loading}
+              disabled={sending || loading || !chat}
               multiline
               maxRows={3}
             />
             <IconButton
               color="primary"
               onClick={handleSendMessage}
-              disabled={!newMessage.trim() || sending || loading}
+              disabled={!newMessage.trim() || sending || loading || !chat}
             >
               {sending ? <CircularProgress size={24} /> : <SendIcon />}
             </IconButton>
@@ -458,4 +503,3 @@ export default function RecreationalChat({
     </Dialog>
   );
 }
-

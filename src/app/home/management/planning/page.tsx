@@ -516,7 +516,7 @@ export default function PlanningTeamDayPage() {
         </Box>
 
         <Grid container spacing={2}>
-          <Grid item xs={12} md={4}>
+          <Grid size={{ xs: 12, md: 4 }}>
             <TextField
               key={`date-${selectedDate}`}
               fullWidth
@@ -535,7 +535,7 @@ export default function PlanningTeamDayPage() {
               helperText="Select a date within the next 2 weeks"
             />
           </Grid>
-          <Grid item xs={6} md={4}>
+          <Grid size={{ xs: 6, md: 4 }}>
             <TextField
               fullWidth
               label="Start Time"
@@ -545,7 +545,7 @@ export default function PlanningTeamDayPage() {
               InputLabelProps={{ shrink: true }}
             />
           </Grid>
-          <Grid item xs={6} md={4}>
+          <Grid size={{ xs: 6, md: 4 }}>
             <TextField
               fullWidth
               label="End Time"
@@ -684,7 +684,7 @@ export default function PlanningTeamDayPage() {
 
             {/* Stats */}
             <Grid container spacing={2} sx={{ mt: 2 }}>
-              <Grid item xs={4}>
+              <Grid size={4}>
                 <Typography variant="body2" color="text.secondary">
                   Total Desks
                 </Typography>
@@ -692,7 +692,7 @@ export default function PlanningTeamDayPage() {
                   {desks.length}
                 </Typography>
               </Grid>
-              <Grid item xs={4}>
+              <Grid size={4}>
                 <Typography variant="body2" color="text.secondary">
                   Available
                 </Typography>
@@ -700,7 +700,7 @@ export default function PlanningTeamDayPage() {
                   {desks.filter((d) => d.status === 'available').length}
                 </Typography>
               </Grid>
-              <Grid item xs={4}>
+              <Grid size={4}>
                 <Typography variant="body2" color="text.secondary">
                   Selected
                 </Typography>
@@ -775,7 +775,7 @@ export default function PlanningTeamDayPage() {
           <>
             <Grid container spacing={2} sx={{ mb: 3 }}>
               {pendingBookings.map((booking, index) => (
-                <Grid item xs={12} sm={6} md={4} lg={3} key={index}>
+                <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={index}>
                   <Card sx={{ border: '1px solid #e2e8f0', position: 'relative' }}>
                     <CardContent sx={{ pb: 2 }}>
                       <IconButton

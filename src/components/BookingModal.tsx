@@ -100,7 +100,7 @@ export default function BookingModal({ desk, onClose, onBook, defaultDate }: Boo
 
   // Chat is always available for recreational spaces
   const currentUserId = getCurrentUserId();
-  const chatAvailable = isRecreational;
+  const selectedChatBooking = existingBookings.find((booking) => booking.userId === currentUserId);
 
   // Generate time slots for the selected date
   const dateObj = new Date(selectedDate);
@@ -422,11 +422,12 @@ export default function BookingModal({ desk, onClose, onBook, defaultDate }: Boo
       {/* Recreational Chat Modal */}
       {isRecreational && chatOpen && currentUserId && (
         <RecreationalChat
+          bookingId={selectedChatBooking?.bookingId}
           roomId={desk.id}
           roomName={desk.name}
           date={selectedDate}
-          startTime={existingBookings.length > 0 ? existingBookings[0].startTime : '09:00'}
-          endTime={existingBookings.length > 0 ? existingBookings[0].endTime : '18:00'}
+          startTime={selectedChatBooking?.startTime || '09:00'}
+          endTime={selectedChatBooking?.endTime || '18:00'}
           currentUserId={currentUserId}
           open={chatOpen}
           onClose={() => setChatOpen(false)}
